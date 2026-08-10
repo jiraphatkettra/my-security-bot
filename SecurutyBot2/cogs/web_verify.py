@@ -353,8 +353,14 @@ class WebVerifyCog(commands.Cog):
         self.site = None
         self.runner = None
 
+    async def handle_health(self, request):
+        """เส้นทางสำหรับ UptimeRobot ตรวจสุขภาพและปุกบอทตื่น 24 ชม."""
+        return web.Response(text="OK - Enterprise Security Bot is Active 24/7", status=200)
+
     async def cog_load(self):
         app = web.Application()
+        app.router.add_get('/', self.handle_health)
+        app.router.add_get('/health', self.handle_health)
         app.router.add_get('/verify', self.handle_verify)
         app.router.add_get('/success.html', self.handle_verify)
         self.runner = web.AppRunner(app)
@@ -496,4 +502,3 @@ class WebVerifyCog(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(WebVerifyCog(bot))
-
