@@ -18,7 +18,7 @@ ALLOWED_CONFIG_KEYS = {
     "self_bot", "webhook_guard", "auto_purge", "image_scanner",
     "verify_channel_id", "verify_role_id", "min_account_age_days", "ip_ban_guard",
     "anti_vpn", "ghost_ping_guard", "owner_pin", "anti_invite", "verify_domain",
-    "suspect_scan"
+    "suspect_scan", "global_panic"
 }
 
 def init_db():
@@ -48,7 +48,8 @@ def init_db():
         ("voice_anti_raid", 1), ("enforce_permissions", 1), ("anti_dox", 1), ("honeypot_channel_id", 0),
         ("self_bot", 1), ("webhook_guard", 1), ("auto_purge", 1), ("image_scanner", 0),
         ("verify_channel_id", 0), ("verify_role_id", 0), ("min_account_age_days", 3), ("ip_ban_guard", 1),
-        ("anti_vpn", 1), ("ghost_ping_guard", 1), ("anti_invite", 1), ("suspect_scan", 1)
+        ("anti_vpn", 1), ("ghost_ping_guard", 1), ("anti_invite", 1), ("suspect_scan", 1),
+        ("global_panic", 0)
     ]
     for col, default in columns:
         try: c.execute(f"ALTER TABLE guild_config ADD COLUMN {col} INTEGER DEFAULT {default}")
@@ -68,7 +69,7 @@ def get_config(guild_id: int):
     if guild_id in config_cache: return config_cache[guild_id]
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT log_channel_id, malware_filter, ai_filter, strike_system, anti_nuke, anti_mention, phishing_api, quarantine_role_id, voice_anti_raid, enforce_permissions, anti_dox, honeypot_channel_id, self_bot, webhook_guard, auto_purge, image_scanner, verify_channel_id, verify_role_id, min_account_age_days, ip_ban_guard, anti_vpn, ghost_ping_guard, owner_pin, anti_invite, verify_domain, suspect_scan FROM guild_config WHERE guild_id = ?", (guild_id,))
+    c.execute("SELECT log_channel_id, malware_filter, ai_filter, strike_system, anti_nuke, anti_mention, phishing_api, quarantine_role_id, voice_anti_raid, enforce_permissions, anti_dox, honeypot_channel_id, self_bot, webhook_guard, auto_purge, image_scanner, verify_channel_id, verify_role_id, min_account_age_days, ip_ban_guard, anti_vpn, ghost_ping_guard, owner_pin, anti_invite, verify_domain, suspect_scan, global_panic FROM guild_config WHERE guild_id = ?", (guild_id,))
     row = c.fetchone()
     conn.close()
     if row:
@@ -81,7 +82,8 @@ def get_config(guild_id: int):
             "anti_vpn": bool(row[20] if row[20] is not None else 1), "ghost_ping_guard": bool(row[21] if row[21] is not None else 1), "owner_pin": row[22] or "123456",
             "anti_invite": bool(row[23] if len(row) > 23 and row[23] is not None else 1),
             "verify_domain": row[24] if len(row) > 24 and row[24] else "",
-            "suspect_scan": bool(row[25] if len(row) > 25 and row[25] is not None else 1)
+            "suspect_scan": bool(row[25] if len(row) > 25 and row[25] is not None else 1),
+            "global_panic": bool(row[26] if len(row) > 26 and row[26] is not None else 0)
         }
     else:
         conf = {
@@ -91,7 +93,7 @@ def get_config(guild_id: int):
             "self_bot": True, "webhook_guard": True, "auto_purge": True, "image_scanner": False,
             "verify_channel_id": 0, "verify_role_id": 0, "min_account_age_days": 3, "ip_ban_guard": True,
             "anti_vpn": True, "ghost_ping_guard": True, "owner_pin": "123456", "anti_invite": True, "verify_domain": "",
-            "suspect_scan": True
+            "suspect_scan": True, "global_panic": False
         }
         update_config(guild_id, "malware_filter", 1)
     config_cache[guild_id] = conf

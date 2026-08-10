@@ -489,20 +489,30 @@ class SecurityMenuView(BaseSecurityView):
         update_config(self.guild_id, "suspect_scan", int(not get_config(self.guild_id).get("suspect_scan")))
         await interaction.response.edit_message(view=SecurityMenuView(self.guild_id))
 
-    @discord.ui.button(label="🔍 สแกนย้อนหลัง (Manual)", style=discord.ButtonStyle.primary, row=3)
-    async def btn_manual_backlog_scan(self, interaction: discord.Interaction, button: Button):
+    @discord.ui.button(label="💬 สแกนข้อความสแปมย้อนหลัง", style=discord.ButtonStyle.primary, row=3)
+    async def btn_scan_messages(self, interaction: discord.Interaction, button: Button):
         await interaction.response.defer(ephemeral=True)
         sec_cog = interaction.client.get_cog("SecurityEventsCog")
-        if sec_cog and hasattr(sec_cog, "run_guild_backlog_scan"):
-            scanned, deleted, suspect_list = await sec_cog.run_guild_backlog_scan(interaction.guild)
+        if sec_cog and hasattr(sec_cog, "run_message_backlog_scan"):
+            scanned, deleted = await sec_cog.run_message_backlog_scan(interaction.guild)
+            msg = (
+                f"✅ **สแกนข้อความสแปมย้อนหลังสำเร็จ!**\n"
+                f"• สแกนข้อความย้อนหลังไป: **{scanned}** ข้อความ\n"
+                f"• ตรวจพบและลบข้อความสุ่มเสี่ยง/สแปม: **{deleted}** ข้อความ"
+            )
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.followup.send("❌ ระบบสแกนข้อความไม่พร้อมใช้งาน", ephemeral=True)
+
+    @discord.ui.button(label="👥 สแกนไอดีดิสสมัครใหม่", style=discord.ButtonStyle.primary, row=3)
+    async def btn_scan_suspects(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer(ephemeral=True)
+        sec_cog = interaction.client.get_cog("SecurityEventsCog")
+        if sec_cog and hasattr(sec_cog, "run_suspect_account_scan"):
+            suspect_list = await sec_cog.run_suspect_account_scan(interaction.guild)
             suspect_count = len(suspect_list)
             
-            first_msg = (
-                f"✅ **สแกนความปลอดภัยย้อนหลังสำเร็จ!**\n"
-                f"• สแกนข้อความย้อนหลังไป: **{scanned}** ข้อความ\n"
-                f"• ตรวจพบและลบข้อความสุ่มเสี่ยง: **{deleted}** ข้อความ\n"
-                f"• ตรวจพบสมาชิกน่าสงสัยในดิส: **{suspect_count}** บัญชี"
-            )
+            first_msg = f"✅ **สแกนไอดีดิสสมัครใหม่/น่าสงสัยสำเร็จ!**\n• ตรวจพบสมาชิกน่าสงสัยในดิส: **{suspect_count}** บัญชี"
             await interaction.followup.send(first_msg, ephemeral=True)
 
             if suspect_count > 0:
@@ -520,18 +530,36 @@ class SecurityMenuView(BaseSecurityView):
                     await interaction.followup.send("\n".join(batch_lines), ephemeral=True)
                     await asyncio.sleep(0.2)
         else:
-            await interaction.followup.send("❌ ระบบสแกนไม่พร้อมใช้งาน", ephemeral=True)
+            await interaction.followup.send("❌ ระบบสแกนสมาชิกไม่พร้อมใช้งาน", ephemeral=True)
 
     @discord.ui.button(label="🚨 Global Panic (ล็อกดาวน์)", style=discord.ButtonStyle.danger, row=3)
     async def btn_panic(self, interaction: discord.Interaction, button: Button):
         async def do_panic(inter: discord.Interaction):
             await inter.response.send_message("🚨 **กำลังล็อกดาวน์ทุกห้อง!**", ephemeral=False)
             guild = inter.guild
+            update_config(guild.id, "global_panic", 1)
             default_role = guild.default_role
             for channel in guild.channels:
                 try:
+                    for target, overwrite in channel.overwrites.items():
+                        if isinstance(target, discord.Role):
+                            if target.permissions.administrator:
+                                continue
+                            ow = channel.overwrites_for(target)
+                            ow.send_messages = False
+                            ow.send_messages_in_threads = False
+                            ow.create_public_threads = False
+                            ow.create_private_threads = False
+                            ow.send_voice_messages = False
+                            ow.connect = False
+                            await channel.set_permissions(target, overwrite=ow)
+
                     overwrite = channel.overwrites_for(default_role)
                     overwrite.send_messages = False
+                    overwrite.send_messages_in_threads = False
+                    overwrite.create_public_threads = False
+                    overwrite.create_private_threads = False
+                    overwrite.send_voice_messages = False
                     overwrite.connect = False
                     await channel.set_permissions(default_role, overwrite=overwrite)
                 except: pass
@@ -545,15 +573,34 @@ class SecurityMenuView(BaseSecurityView):
         async def do_unpanic(inter: discord.Interaction):
             await inter.response.send_message("🟢 **กำลังปลดล็อกดาวน์!**", ephemeral=False)
             guild = inter.guild
+            update_config(guild.id, "global_panic", 0)
             default_role = guild.default_role
             for channel in guild.channels:
                 try:
+                    for target, overwrite in channel.overwrites.items():
+                        if isinstance(target, discord.Role):
+                            if target.permissions.administrator:
+                                continue
+                            ow = channel.overwrites_for(target)
+                            ow.send_messages = None
+                            ow.send_messages_in_threads = None
+                            ow.create_public_threads = None
+                            ow.create_private_threads = None
+                            ow.send_voice_messages = None
+                            ow.connect = None
+                            await channel.set_permissions(target, overwrite=ow)
+
                     overwrite = channel.overwrites_for(default_role)
                     overwrite.send_messages = None
+                    overwrite.send_messages_in_threads = None
+                    overwrite.create_public_threads = None
+                    overwrite.create_private_threads = None
+                    overwrite.send_voice_messages = None
                     overwrite.connect = None
                     await channel.set_permissions(default_role, overwrite=overwrite)
                 except: pass
             await inter.followup.send("✅ ปลดล็อกดาวน์สำเร็จ!", ephemeral=False)
+            await send_audit_log(guild, "🟢 UNPANIC LOCKDOWN", f"ปลดล็อกเซิร์ฟเวอร์โดย: {inter.user.mention}", discord.Color.green())
 
         await interaction.response.send_modal(OwnerPinModal("Unpanic Lockdown", do_unpanic))
 

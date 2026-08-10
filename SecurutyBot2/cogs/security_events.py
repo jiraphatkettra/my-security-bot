@@ -215,31 +215,51 @@ class SecurityEventsCog(commands.Cog):
     async def before_flush_delete_queue(self):
         await self.bot.wait_until_ready()
 
-    async def run_guild_backlog_scan(self, guild: discord.Guild):
-        """ฟังก์ชันสแกนความปลอดภัยย้อนหลังแบบ Manual (สแกนทั้งข้อความแชท + สแกนไอดีสมาชิกน่าสงสัย)"""
+    async def run_message_backlog_scan(self, guild: discord.Guild):
+        """ฟังก์ชันสแกนและลบข้อความสแปม/อันตรายย้อนหลังในแชท"""
         conf = get_config(guild.id)
         guild_invites = await get_cached_guild_invites(guild) if conf.get("anti_invite") else []
         scanned_count = 0
         deleted_count = 0
 
-        # 1. 💬 Scan Text Channels History
+        active_webhook_ids = set()
+        try:
+            guild_webhooks = await guild.webhooks()
+            active_webhook_ids = {wh.id for wh in guild_webhooks}
+        except: pass
+
         for channel in guild.text_channels:
             if not channel.permissions_for(guild.me).read_messages or not channel.permissions_for(guild.me).read_message_history:
                 continue
             try:
-                async for message in channel.history(limit=50):
+                async for message in channel.history(limit=500):
                     scanned_count += 1
-                    if message.author.bot or not message.guild:
+                    if not message.guild or message.author.id == self.bot.user.id:
                         continue
                     
                     is_wl = isinstance(message.author, discord.Member) and (
-                        message.author.guild_permissions.administrator or any(r.id in get_whitelist(guild.id) for r in message.author.roles)
+                        message.author.id == guild.owner_id or message.author.guild_permissions.administrator or any(r.id in get_whitelist(guild.id) for r in message.author.roles)
                     )
                     if is_wl:
                         continue
 
                     content = message.content.strip() if message.content else ""
-                    
+
+                    # Check for Webhook messages (ลบข้อความ Webhook ค้าง หรือ Webhook ที่โดนลบไปแล้ว/สแปม)
+                    if message.webhook_id:
+                        is_orphan_webhook = message.webhook_id not in active_webhook_ids
+                        has_spam_content = (
+                            bool(re.search(URL_REGEX, content, re.IGNORECASE)) or
+                            any(w in content.lower() for w in ["cybernuvex", "โกโก้กลัว", "จำกูได้ป่ะ", "ไอ้พวกโง่", "ยิงดิส", "nuke", "raid", "bypass", "bot"]) or
+                            (BAD_WORDS and any(w in content.lower() for w in BAD_WORDS))
+                        )
+                        if is_orphan_webhook or has_spam_content:
+                            await safe_delete(message)
+                            deleted_count += 1
+                            await send_audit_log(guild, "🚨 เคลียร์ข้อความ Webhook สแปมย้อนหลังสำเร็จ", f"ลบข้อความสแปม Webhook ใน {channel.mention}\nเนื้อหา: `{content[:100]}`", discord.Color.red())
+                            await asyncio.sleep(0.05)
+                            continue
+
                     # Token Leak
                     if content and re.search(DISCORD_TOKEN_REGEX, content):
                         await safe_delete(message)
@@ -273,15 +293,17 @@ class SecurityEventsCog(commands.Cog):
                         if has_scam:
                             continue
 
-                    # Anti-Invite Links
+                    # Anti-Invite Links & OAuth2 Bot Invites
                     if conf.get("anti_invite") and content:
-                        invite_match = re.search(r"(https?://)?(www\.)?(discord\.gg|discord\.com/invite|discordapp\.com/invite)/([a-zA-Z0-9]+)", content, re.IGNORECASE)
-                        if invite_match and invite_match.group(4) not in guild_invites:
-                            await safe_delete(message)
-                            deleted_count += 1
-                            await send_audit_log(guild, "🔗 Anti-Invite Guard (Manual Scan)", f"ลบลิงก์เชิญเซิร์ฟเวอร์อื่นย้อนหลัง จาก {message.author.mention} ใน {channel.mention}", discord.Color.orange())
-                            await asyncio.sleep(0.1)
-                            continue
+                        invite_match = re.search(r"(https?://)?(www\.)?(discord\.gg|discord\.com/invite|discordapp\.com/invite|discord\.com/oauth2|discord\.com/api/oauth2)/([a-zA-Z0-9_?&=.-]+)", content, re.IGNORECASE)
+                        if invite_match:
+                            code = invite_match.group(4)
+                            if code not in guild_invites:
+                                await safe_delete(message)
+                                deleted_count += 1
+                                await send_audit_log(guild, "🔗 Anti-Invite / OAuth2 Guard (Manual Scan)", f"ลบลิงก์เชิญ/OAuth2 ย้อนหลัง จาก {message.author.mention} ใน {channel.mention}", discord.Color.orange())
+                                await asyncio.sleep(0.1)
+                                continue
 
                     # Anti-Dox (Thai ID Modulo 11 & Public IP & Phone)
                     if conf.get("anti_dox") and content:
@@ -308,7 +330,10 @@ class SecurityEventsCog(commands.Cog):
             except Exception as e:
                 print(f"Error scanning channel {channel.name}: {e}")
 
-        # 2. 👥 Scan Current Server Members for Suspicious Accounts (แบ่งส่งทีละชุด ไม่ให้รายชื่อขาดหาย)
+        return scanned_count, deleted_count
+
+    async def run_suspect_account_scan(self, guild: discord.Guild):
+        """ฟังก์ชันสแกนไอดีดิสสมัครใหม่/น่าสงสัยในเซิร์ฟเวอร์"""
         suspicious_members = []
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         for member in guild.members:
@@ -345,6 +370,12 @@ class SecurityEventsCog(commands.Cog):
                 )
                 await asyncio.sleep(0.3)
 
+        return suspicious_members
+
+    async def run_guild_backlog_scan(self, guild: discord.Guild):
+        """ฟังก์ชันสแกนรวมทั้งข้อความและไอดีน่าสงสัย (เพื่อความเข้ากันได้ย้อนหลัง)"""
+        scanned_count, deleted_count = await self.run_message_backlog_scan(guild)
+        suspicious_members = await self.run_suspect_account_scan(guild)
         return scanned_count, deleted_count, suspicious_members
 
     @commands.Cog.listener()
@@ -475,6 +506,30 @@ class SecurityEventsCog(commands.Cog):
         conf = get_config(guild.id)
         if not conf.get("webhook_guard"): return
 
+        try:
+            async for entry in guild.audit_logs(action=discord.AuditLogAction.webhook_create, limit=1):
+                creator = entry.user
+                if creator and not creator.bot and creator.id != guild.owner_id:
+                    is_wl = any(r.id in get_whitelist(guild.id) for r in creator.roles) if isinstance(creator, discord.Member) else False
+                    if not is_wl:
+                        try:
+                            webhooks = await channel.webhooks()
+                            for wh in webhooks:
+                                if wh.id == entry.target.id or (wh.user and wh.user.id == creator.id):
+                                    await wh.delete(reason="[Webhook Guard] สกัดกั้นการสร้าง Webhook โดยไม่อยู่ใน Whitelist")
+                        except: pass
+
+                        try:
+                            await guild.ban(creator, reason="[Webhook Guard] สั่งแบนผู้สร้าง Webhook ที่ไม่ได้อยู่ใน Whitelist ทันที")
+                            ban_info = f"\n🔨 **สั่งแบนผู้สร้าง Webhook ทันที:** {creator.mention} (`{creator.id}`)"
+                        except:
+                            ban_info = f"\n⚠️ **ผู้สร้าง:** {creator.mention}"
+
+                        await send_audit_log(guild, "🚨 สกัดการสร้าง Webhook ไม่อนุญาต!", f"ตรวจพบ {creator.mention} สร้าง Webhook ใน {channel.mention}\n⚡ **ทำการทำลาย Webhook ทันที!**{ban_info}", discord.Color.dark_red())
+                        return
+        except Exception as e:
+            print(f"Webhook Audit Check Error: {e}")
+
         now = time.time()
         webhook_update_timestamps[guild.id].append(now)
         webhook_update_timestamps[guild.id] = [t for t in webhook_update_timestamps[guild.id] if now - t < 60]
@@ -558,6 +613,19 @@ class SecurityEventsCog(commands.Cog):
         if not message.guild: return
         conf = get_config(message.guild.id)
 
+        # 🚨 GLOBAL PANIC CHECK: หากเปิดใช้งาน Panic Mode ให้บล็อกและลบการส่งข้อความจากสมาชิกทั่วไป/เว็บฮุคทันที
+        if conf.get("global_panic"):
+            if message.author.id != self.bot.user.id:
+                is_wl = False
+                if message.author.id == message.guild.owner_id:
+                    is_wl = True
+                elif isinstance(message.author, discord.Member):
+                    is_wl = message.author.guild_permissions.administrator or any(r.id in get_whitelist(message.guild.id) for r in message.author.roles)
+                
+                if not is_wl:
+                    await safe_delete(message)
+                    return
+
         if message.webhook_id:
             now = time.time()
             wh_id = message.webhook_id
@@ -565,8 +633,20 @@ class SecurityEventsCog(commands.Cog):
             webhook_msg_timestamps[g_id][wh_id].append(now)
             webhook_msg_timestamps[g_id][wh_id] = [t for t in webhook_msg_timestamps[g_id][wh_id] if now - t < 5]
             
-            if len(webhook_msg_timestamps[g_id][wh_id]) >= 4:
-                await safe_delete(message)
+            content_lower = message.content.lower() if message.content else ""
+            is_nuke_spam_phrase = any(w in content_lower for w in ["cybernuvex", "โกโก้กลัว", "จำกูได้ป่ะ", "ไอ้พวกโง่", "ยิงดิส", "nuke", "raid", "bypass"])
+            is_rapid_spam = len(webhook_msg_timestamps[g_id][wh_id]) >= 2
+
+            if is_rapid_spam or is_nuke_spam_phrase:
+                # 💥 BULK PURGE: กวาดลบข้อความสแปมค้างย้อนหลังของ Webhook นี้ทันที ไม่ให้เหลือค้างในช่องแชท (รองรับสูงสุด 500 ข้อความ)
+                try:
+                    await message.channel.purge(
+                        limit=500, 
+                        check=lambda m: m.webhook_id == wh_id or (m.author and m.author.name == message.author.name and m.webhook_id is not None)
+                    )
+                except Exception:
+                    await safe_delete(message)
+
                 try:
                     webhooks = await message.channel.webhooks()
                     target_wh = next((wh for wh in webhooks if wh.id == wh_id), None)
@@ -590,7 +670,7 @@ class SecurityEventsCog(commands.Cog):
                         message.guild, 
                         "🚨 สกัดกั้น WEBHOOK SPAM ATTACK!", 
                         f"ตรวจพบการยิงสแปมผ่าน Webhook ใน {message.channel.mention}\n"
-                        f"⚡ **ทำการลบ Webhook ทิ้งทันที!**{ban_info}", 
+                        f"⚡ **ทำการลบ Webhook ทิ้งและกวาดลบข้อความค้างทั้งหมด!**{ban_info}", 
                         discord.Color.dark_red()
                     )
                     webhook_msg_timestamps[g_id][wh_id].clear()
@@ -633,7 +713,7 @@ class SecurityEventsCog(commands.Cog):
             now = time.time()
 
             if conf.get("anti_invite") and content:
-                invite_match = re.search(r"(https?://)?(www\.)?(discord\.gg|discord\.com/invite|discordapp\.com/invite)/([a-zA-Z0-9]+)", content, re.IGNORECASE)
+                invite_match = re.search(r"(https?://)?(www\.)?(discord\.gg|discord\.com/invite|discordapp\.com/invite|discord\.com/oauth2|discord\.com/api/oauth2)/([a-zA-Z0-9_?&=.-]+)", content, re.IGNORECASE)
                 if invite_match:
                     code = invite_match.group(4)
                     guild_invites = await get_cached_guild_invites(message.guild)
@@ -641,8 +721,8 @@ class SecurityEventsCog(commands.Cog):
                     if code not in guild_invites:
                         try:
                             await safe_delete(message)
-                            await send_audit_log(message.guild, "🔗 Anti-Invite Guard", f"ลบลิงก์เชิญเซิร์ฟเวอร์อื่นจาก {user.mention} ในช่อง {message.channel.mention}\nข้อความ: `{content}`", discord.Color.orange())
-                            try: await user.send("⚠️ **เตือนความปลอดภัย:** ไม่อนุญาตให้โพสต์ลิงก์เชิญเข้า Discord เซิร์ฟเวอร์อื่นในเซิร์ฟเวอร์นี้")
+                            await send_audit_log(message.guild, "🔗 Anti-Invite / OAuth2 Guard", f"ลบลิงก์เชิญเซิร์ฟเวอร์/OAuth2 จาก {user.mention} ในช่อง {message.channel.mention}\nข้อความ: `{content}`", discord.Color.orange())
+                            try: await user.send("⚠️ **เตือนความปลอดภัย:** ไม่อนุญาตให้โพสต์ลิงก์เชิญเข้า Discord หรือลิงก์ OAuth2 ดึงสิทธิ์ในเซิร์ฟเวอร์นี้")
                             except: pass
                             return
                         except: pass
