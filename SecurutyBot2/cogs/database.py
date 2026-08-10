@@ -11,6 +11,16 @@ DB_FILE = "security_bot.db"
 whitelist_cache = {}
 config_cache = {}
 
+DEFAULT_LOG_CHANNEL_ID = 1500828287964938381
+DEFAULT_HONEYPOT_CHANNEL_ID = 1536412083535609966
+DEFAULT_WHITELIST_ROLES = [
+    1459142303921737936,
+    1500441740929269863,
+    1532420811850256494,
+    1530943658600431787,
+    1523319813621940315
+]
+
 ALLOWED_CONFIG_KEYS = {
     "log_channel_id", "malware_filter", "ai_filter", "strike_system", 
     "anti_nuke", "anti_mention", "phishing_api", "quarantine_role_id", 
@@ -74,9 +84,11 @@ def get_config(guild_id: int):
     conn.close()
     if row:
         conf = {
-            "log_channel": row[0], "malware": bool(row[1]), "ai": bool(row[2]), "strike": bool(row[3]),
+            "log_channel": row[0] if (row[0] is not None and row[0] != 0) else DEFAULT_LOG_CHANNEL_ID,
+            "malware": bool(row[1]), "ai": bool(row[2]), "strike": bool(row[3]),
             "anti_nuke": bool(row[4]), "anti_mention": bool(row[5]), "phishing_api": bool(row[6]), "quarantine_role_id": row[7],
-            "voice_anti_raid": bool(row[8]), "enforce_permissions": bool(row[9]), "anti_dox": bool(row[10]), "honeypot_channel_id": row[11],
+            "voice_anti_raid": bool(row[8]), "enforce_permissions": bool(row[9]), "anti_dox": bool(row[10]),
+            "honeypot_channel_id": row[11] if (row[11] is not None and row[11] != 0) else DEFAULT_HONEYPOT_CHANNEL_ID,
             "self_bot": bool(row[12]), "webhook_guard": bool(row[13]), "auto_purge": bool(row[14]), "image_scanner": bool(row[15]),
             "verify_channel_id": row[16] or 0, "verify_role_id": row[17] or 0, "min_account_age_days": row[18] or 3, "ip_ban_guard": bool(row[19]),
             "anti_vpn": bool(row[20] if row[20] is not None else 1), "ghost_ping_guard": bool(row[21] if row[21] is not None else 1), "owner_pin": row[22] or "123456",
@@ -87,15 +99,17 @@ def get_config(guild_id: int):
         }
     else:
         conf = {
-            "log_channel": None, "malware": True, "ai": False, "strike": True,
+            "log_channel": DEFAULT_LOG_CHANNEL_ID, "malware": True, "ai": False, "strike": True,
             "anti_nuke": True, "anti_mention": True, "phishing_api": True, "quarantine_role_id": 0,
-            "voice_anti_raid": True, "enforce_permissions": True, "anti_dox": True, "honeypot_channel_id": 0,
+            "voice_anti_raid": True, "enforce_permissions": True, "anti_dox": True,
+            "honeypot_channel_id": DEFAULT_HONEYPOT_CHANNEL_ID,
             "self_bot": True, "webhook_guard": True, "auto_purge": True, "image_scanner": False,
             "verify_channel_id": 0, "verify_role_id": 0, "min_account_age_days": 3, "ip_ban_guard": True,
             "anti_vpn": True, "ghost_ping_guard": True, "owner_pin": "123456", "anti_invite": True, "verify_domain": "",
             "suspect_scan": True, "global_panic": False
         }
-        update_config(guild_id, "malware_filter", 1)
+        update_config(guild_id, "log_channel_id", DEFAULT_LOG_CHANNEL_ID)
+        update_config(guild_id, "honeypot_channel_id", DEFAULT_HONEYPOT_CHANNEL_ID)
     config_cache[guild_id] = conf
     return conf
 
@@ -117,6 +131,10 @@ def get_whitelist(guild_id: int):
     c.execute("SELECT role_id FROM whitelist WHERE guild_id = ?", (guild_id,))
     roles = [row[0] for row in c.fetchall()]
     conn.close()
+
+    if not roles:
+        roles = DEFAULT_WHITELIST_ROLES.copy()
+
     whitelist_cache[guild_id] = roles
     return roles
 
