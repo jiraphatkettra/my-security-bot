@@ -29,6 +29,11 @@ async def load_cogs():
     await bot.load_extension("cogs.web_verify")
     await bot.load_extension("cogs.dashboard")
     await bot.load_extension("cogs.security_events")
+    try:
+        synced = await bot.tree.sync()
+        print(f"✅ Synced {len(synced)} Slash Commands with Discord!")
+    except Exception as e:
+        print(f"⚠️ Slash Command Sync Error: {e}")
 
 bot.setup_hook = load_cogs
 

@@ -4,6 +4,7 @@ import time
 import datetime
 import sqlite3
 from collections import defaultdict
+from discord import app_commands
 from discord.ext import commands
 from discord.ui import Button, View, Modal, TextInput, UserSelect, RoleSelect
 
@@ -655,12 +656,25 @@ class DashboardCog(commands.Cog):
     async def open_dashboard(self, ctx):
         await ctx.send(embed=get_main_embed(), view=MainDashboardView())
 
+    @app_commands.command(name="security", description="🖥️ เปิดศูนย์ควบคุมระบบความปลอดภัย (Security Dashboard)")
+    @app_commands.checks.has_permissions(manage_messages=True)
+    async def slash_security(self, interaction: discord.Interaction):
+        await interaction.response.send_message(embed=get_main_embed(), view=MainDashboardView())
+
     @commands.command(name="purge")
     @commands.has_permissions(manage_messages=True)
     async def command_purge(self, ctx, amount: int = 10):
         await ctx.message.delete()
         deleted = await ctx.channel.purge(limit=amount)
         await ctx.send(f"🧹 ลบสำเร็จ **{len(deleted)}** ข้อความ", delete_after=5)
+
+    @app_commands.command(name="purge", description="🧹 ลบข้อความในช่องที่ต้องการ")
+    @app_commands.describe(amount="จำนวนข้อความที่ต้องการลบ (1-100)")
+    @app_commands.checks.has_permissions(manage_messages=True)
+    async def slash_purge(self, interaction: discord.Interaction, amount: int = 10):
+        await interaction.response.defer(ephemeral=True)
+        deleted = await interaction.channel.purge(limit=amount)
+        await interaction.followup.send(f"🧹 ลบสำเร็จ **{len(deleted)}** ข้อความ", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(DashboardCog(bot))
