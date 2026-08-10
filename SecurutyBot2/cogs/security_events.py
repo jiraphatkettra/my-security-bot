@@ -68,7 +68,6 @@ def is_valid_public_ip(ip_str: str) -> bool:
     try:
         nums = [int(p) for p in parts]
         if any(n < 0 or n > 255 for n in nums): return False
-        # คัดกรอง Private/Local/Multicast IP ทิ้ง (127.0.0.1, 192.168.x.x, 10.x.x.x ฯลฯ)
         if nums[0] in (0, 10, 127): return False
         if nums[0] == 172 and (16 <= nums[1] <= 31): return False
         if nums[0] == 192 and nums[1] == 168: return False
@@ -156,7 +155,6 @@ async def get_cached_guild_invites(guild: discord.Guild):
 class SecurityEventsCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.backlog_scanned = False
         self.flush_delete_queue.start()
 
     def cog_unload(self):
@@ -217,101 +215,102 @@ class SecurityEventsCog(commands.Cog):
     async def before_flush_delete_queue(self):
         await self.bot.wait_until_ready()
 
-    async def scan_backlog_messages(self):
-        """ระบบสแกนความปลอดภัยย้อนหลังครอบคลุมทุกฟังก์ชันความปลอดภัยเมื่อบอทเริ่มทำงาน"""
-        await self.bot.wait_until_ready()
-        if self.backlog_scanned:
-            return
-        self.backlog_scanned = True
-        print("🔍 Starting Full Backlog Message Security Scan...")
-        
-        for guild in self.bot.guilds:
-            conf = get_config(guild.id)
-            guild_invites = await get_cached_guild_invites(guild) if conf.get("anti_invite") else []
-            for channel in guild.text_channels:
-                if not channel.permissions_for(guild.me).read_messages or not channel.permissions_for(guild.me).read_message_history:
-                    continue
-                try:
-                    async for message in channel.history(limit=50):
-                        if message.author.bot or not message.guild:
-                            continue
-                        
-                        is_wl = isinstance(message.author, discord.Member) and (
-                            message.author.guild_permissions.administrator or any(r.id in get_whitelist(guild.id) for r in message.author.roles)
-                        )
-                        if is_wl:
-                            continue
+    async def run_guild_backlog_scan(self, guild: discord.Guild):
+        """ฟังก์ชันสแกนความปลอดภัยย้อนหลังแบบกดปุ่มสั่งงาน Manual เท่านั้น"""
+        conf = get_config(guild.id)
+        guild_invites = await get_cached_guild_invites(guild) if conf.get("anti_invite") else []
+        scanned_count = 0
+        deleted_count = 0
 
-                        content = message.content.strip() if message.content else ""
-                        
-                        # 1. Discord Bot Token Leak
-                        if content and re.search(DISCORD_TOKEN_REGEX, content):
-                            await safe_delete(message)
-                            await send_audit_log(guild, "🚨 ตรวจพบ DISCORD BOT TOKEN LEAK (Backlog Scan)!", f"ผู้ใช้ {message.author.mention} โพสต์ Discord Bot Token ใน {channel.mention}\n*ลบข้อความย้อนหลังสำเร็จ*", discord.Color.dark_red())
-                            await asyncio.sleep(0.1)
-                            continue
-                        
-                        # 2. Dangerous attachments (Malware)
-                        if conf.get("malware") and message.attachments:
-                            for att in message.attachments:
-                                if att.filename.lower().endswith(DANGEROUS_EXTENSIONS):
-                                    await safe_delete(message)
-                                    await send_audit_log(guild, "🛡️ มัลแวร์สกัดกั้น (Backlog Scan)", f"ลบไฟล์อันตรายย้อนหลัง `{att.filename}` จาก {message.author.mention} ใน {channel.mention}", discord.Color.red())
-                                    await asyncio.sleep(0.1)
-                                    break
-                                    
-                        # 3. Phishing Links
-                        if conf.get("phishing_api") and content:
-                            urls = re.findall(URL_REGEX, content, re.IGNORECASE)
-                            has_scam = False
-                            for url in urls:
-                                if await check_phishing_api(url):
-                                    await safe_delete(message)
-                                    await send_audit_log(guild, "🚨 ลิงก์สแกมสกัดกั้น (Backlog Scan)", f"ลบข้อความลิงก์สแกมย้อนหลัง จาก {message.author.mention} ใน {channel.mention}", discord.Color.red())
-                                    await asyncio.sleep(0.1)
-                                    has_scam = True
-                                    break
-                            if has_scam:
-                                continue
+        for channel in guild.text_channels:
+            if not channel.permissions_for(guild.me).read_messages or not channel.permissions_for(guild.me).read_message_history:
+                continue
+            try:
+                async for message in channel.history(limit=50):
+                    scanned_count += 1
+                    if message.author.bot or not message.guild:
+                        continue
+                    
+                    is_wl = isinstance(message.author, discord.Member) and (
+                        message.author.guild_permissions.administrator or any(r.id in get_whitelist(guild.id) for r in message.author.roles)
+                    )
+                    if is_wl:
+                        continue
 
-                        # 4. Anti-Invite Links
-                        if conf.get("anti_invite") and content:
-                            invite_match = re.search(r"(https?://)?(www\.)?(discord\.gg|discord\.com/invite|discordapp\.com/invite)/([a-zA-Z0-9]+)", content, re.IGNORECASE)
-                            if invite_match and invite_match.group(4) not in guild_invites:
+                    content = message.content.strip() if message.content else ""
+                    
+                    # 1. Discord Bot Token Leak
+                    if content and re.search(DISCORD_TOKEN_REGEX, content):
+                        await safe_delete(message)
+                        deleted_count += 1
+                        await send_audit_log(guild, "🚨 ตรวจพบ DISCORD BOT TOKEN LEAK (Manual Scan)!", f"ผู้ใช้ {message.author.mention} โพสต์ Discord Bot Token ใน {channel.mention}\n*ลบข้อความย้อนหลังสำเร็จ*", discord.Color.dark_red())
+                        await asyncio.sleep(0.1)
+                        continue
+                    
+                    # 2. Dangerous attachments (Malware)
+                    if conf.get("malware") and message.attachments:
+                        for att in message.attachments:
+                            if att.filename.lower().endswith(DANGEROUS_EXTENSIONS):
                                 await safe_delete(message)
-                                await send_audit_log(guild, "🔗 Anti-Invite Guard (Backlog Scan)", f"ลบลิงก์เชิญเซิร์ฟเวอร์อื่นย้อนหลัง จาก {message.author.mention} ใน {channel.mention}", discord.Color.orange())
+                                deleted_count += 1
+                                await send_audit_log(guild, "🛡️ มัลแวร์สกัดกั้น (Manual Scan)", f"ลบไฟล์อันตรายย้อนหลัง `{att.filename}` จาก {message.author.mention} ใน {channel.mention}", discord.Color.red())
                                 await asyncio.sleep(0.1)
-                                continue
-
-                        # 5. Anti-Dox (Thai ID Modulo 11 & Public IP & Phone)
-                        if conf.get("anti_dox") and content:
-                            clean_text = re.sub(r"```[\s\S]*?```|`[^`]*`", "", content)
-                            clean_text = re.sub(URL_REGEX, "", clean_text, flags=re.IGNORECASE)
-                            thai_ids = re.findall(r"\b[1-9]\d{12}\b", clean_text)
-                            ips = re.findall(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", clean_text)
-                            phones = re.findall(r"\b(?:06|08|09)\d{8}\b", clean_text)
-                            if any(is_valid_thai_id(tid) for tid in thai_ids) or any(is_valid_public_ip(ip) for ip in ips) or len(phones) > 0:
+                                break
+                                
+                    # 3. Phishing Links
+                    if conf.get("phishing_api") and content:
+                        urls = re.findall(URL_REGEX, content, re.IGNORECASE)
+                        has_scam = False
+                        for url in urls:
+                            if await check_phishing_api(url):
                                 await safe_delete(message)
-                                await send_audit_log(guild, "👁️ ANTI-DOX (Backlog Scan)", f"ลบการเปิดเผยข้อมูลสำคัญย้อนหลัง จาก {message.author.mention} ใน {channel.mention}", discord.Color.red())
+                                deleted_count += 1
+                                await send_audit_log(guild, "🚨 ลิงก์สแกมสกัดกั้น (Manual Scan)", f"ลบข้อความลิงก์สแกมย้อนหลัง จาก {message.author.mention} ใน {channel.mention}", discord.Color.red())
                                 await asyncio.sleep(0.1)
-                                continue
+                                has_scam = True
+                                break
+                        if has_scam:
+                            continue
 
-                        # 6. Bad Words (ปิดการสแกนหาก BAD_WORDS เป็นลิสต์ว่าง)
-                        if BAD_WORDS and content and any(w in content.lower() for w in BAD_WORDS):
+                    # 4. Anti-Invite Links
+                    if conf.get("anti_invite") and content:
+                        invite_match = re.search(r"(https?://)?(www\.)?(discord\.gg|discord\.com/invite|discordapp\.com/invite)/([a-zA-Z0-9]+)", content, re.IGNORECASE)
+                        if invite_match and invite_match.group(4) not in guild_invites:
                             await safe_delete(message)
+                            deleted_count += 1
+                            await send_audit_log(guild, "🔗 Anti-Invite Guard (Manual Scan)", f"ลบลิงก์เชิญเซิร์ฟเวอร์อื่นย้อนหลัง จาก {message.author.mention} ใน {channel.mention}", discord.Color.orange())
                             await asyncio.sleep(0.1)
                             continue
 
-                        await asyncio.sleep(0.02)
-                except Exception as e:
-                    print(f"Error scanning channel {channel.name}: {e}")
-                await asyncio.sleep(0.05)
-        print("✅ Full Backlog Message Security Scan completed!")
+                    # 5. Anti-Dox (Thai ID Modulo 11 & Public IP & Phone)
+                    if conf.get("anti_dox") and content:
+                        clean_text = re.sub(r"```[\s\S]*?```|`[^`]*`", "", content)
+                        clean_text = re.sub(URL_REGEX, "", clean_text, flags=re.IGNORECASE)
+                        thai_ids = re.findall(r"\b[1-9]\d{12}\b", clean_text)
+                        ips = re.findall(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", clean_text)
+                        phones = re.findall(r"\b(?:06|08|09)\d{8}\b", clean_text)
+                        if any(is_valid_thai_id(tid) for tid in thai_ids) or any(is_valid_public_ip(ip) for ip in ips) or len(phones) > 0:
+                            await safe_delete(message)
+                            deleted_count += 1
+                            await send_audit_log(guild, "👁️ ANTI-DOX (Manual Scan)", f"ลบการเปิดเผยข้อมูลสำคัญย้อนหลัง จาก {message.author.mention} ใน {channel.mention}", discord.Color.red())
+                            await asyncio.sleep(0.1)
+                            continue
+
+                    # 6. Bad Words (ถ้าตั้งไว้)
+                    if BAD_WORDS and content and any(w in content.lower() for w in BAD_WORDS):
+                        await safe_delete(message)
+                        deleted_count += 1
+                        await asyncio.sleep(0.1)
+                        continue
+
+                    await asyncio.sleep(0.01)
+            except Exception as e:
+                print(f"Error scanning channel {channel.name}: {e}")
+        return scanned_count, deleted_count
 
     @commands.Cog.listener()
     async def on_ready(self):
         print(f"✅ Ultimate Enterprise Security Bot is ACTIVE!")
-        asyncio.create_task(self.scan_backlog_messages())
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -402,12 +401,10 @@ class SecurityEventsCog(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild, user):
-        # 1. Anti-Nuke check
         async for entry in guild.audit_logs(action=discord.AuditLogAction.ban, limit=1):
             if entry.target.id == user.id:
                 await check_anti_nuke(guild, entry.user, "สั่งแบนสมาชิก")
         
-        # 2. 🔄 Auto IP Blacklist Sync
         try:
             banned_count = ban_user_ips(guild.id, user.id, f"Auto IP Sync for Banned User {user.name}")
             if banned_count > 0:
@@ -415,7 +412,6 @@ class SecurityEventsCog(commands.Cog):
         except Exception as e:
             print(f"Auto IP Sync Error: {e}")
 
-    # 🧵 Anti-Thread / Forum Spam Guard
     @commands.Cog.listener()
     async def on_thread_create(self, thread: discord.Thread):
         guild = thread.guild
@@ -453,11 +449,9 @@ class SecurityEventsCog(commands.Cog):
                 webhook_update_timestamps[guild.id].clear()
             except: pass
 
-    # 🎙️ Voice Anti-Raid (แก้ไขปัญหาจับโดนคนบริสุทธิ์)
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before, after):
         if member.bot: return
-        # ทำงานเฉพาะตอนย้ายหรือเข้าห้องเสียงใหม่จริงๆ เท่านั้น (ไม่ทำงานตอนเปิดปิดไมค์/หูฟัง)
         if before.channel == after.channel: return
         
         conf = get_config(member.guild.id)
@@ -468,7 +462,6 @@ class SecurityEventsCog(commands.Cog):
         voice_join_timestamps[guild_id][member.id].append(now)
         voice_join_timestamps[guild_id][member.id] = [t for t in voice_join_timestamps[guild_id][member.id] if now - t < 10]
         
-        # ปรับเกณฑ์เป็นเข้า-ออก/ย้ายห้องเสียงเกิน 5 ครั้งใน 10 วินาที
         if len(voice_join_timestamps[guild_id][member.id]) >= 5:
             try:
                 await member.move_to(None)
@@ -494,7 +487,6 @@ class SecurityEventsCog(commands.Cog):
                     await send_audit_log(after.guild, "🛡️ Perm Enforcer", f"ดึงสิทธิ์แอดมินออกจากยศ {after.mention} ทันที (ไม่ได้อยู่ใน Whitelist)", discord.Color.orange())
                 except: pass
 
-    # 👻 Ghost Ping Guard
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
         if not message.guild or message.author.bot: return
@@ -517,7 +509,6 @@ class SecurityEventsCog(commands.Cog):
                 discord.Color.gold()
             )
 
-    # ✏️ Message Edit Guard
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
         if not after.guild or after.author.bot or before.content == after.content: return
@@ -528,7 +519,6 @@ class SecurityEventsCog(commands.Cog):
         if not message.guild: return
         conf = get_config(message.guild.id)
 
-        # ⚓ 1. WEBHOOK SPAM DEFENSE (ป้องกัน Webhook ยิงดิส + แบนผู้สร้างทึนที)
         if message.webhook_id:
             now = time.time()
             wh_id = message.webhook_id
@@ -536,17 +526,14 @@ class SecurityEventsCog(commands.Cog):
             webhook_msg_timestamps[g_id][wh_id].append(now)
             webhook_msg_timestamps[g_id][wh_id] = [t for t in webhook_msg_timestamps[g_id][wh_id] if now - t < 5]
             
-            # หาก Webhook เดียวกันส่งข้อความตั้งแต่ 4 ข้อความขึ้นไปใน 5 วินาที = WEBHOOK ATTACK!
             if len(webhook_msg_timestamps[g_id][wh_id]) >= 4:
                 await safe_delete(message)
                 try:
-                    # 1. ทำการลบ Webhook ทิ้งทันที
                     webhooks = await message.channel.webhooks()
                     target_wh = next((wh for wh in webhooks if wh.id == wh_id), None)
                     if target_wh:
                         await target_wh.delete(reason="[Webhook Guard] สกัดกั้นการสแปม Webhook ยิงดิส")
                     
-                    # 2. ค้นหาผู้สร้าง Webhook ใน Audit Log เพื่อสั่งแบน
                     creator_user = None
                     async for entry in message.guild.audit_logs(action=discord.AuditLogAction.webhook_create, limit=5):
                         if entry.target and entry.target.id == wh_id:
@@ -572,7 +559,6 @@ class SecurityEventsCog(commands.Cog):
                     print(f"Webhook Attack Defense Error: {e}")
                 return
 
-        # 🍯 Honeypot Check
         if conf.get("honeypot_channel_id") and message.channel.id == conf["honeypot_channel_id"]:
             if not message.author.bot:
                 await safe_delete(message)
@@ -584,7 +570,6 @@ class SecurityEventsCog(commands.Cog):
 
         content = message.content.strip() if message.content else ""
 
-        # 🔑 Discord Bot Token Leak Protection
         if content and re.search(DISCORD_TOKEN_REGEX, content):
             try:
                 await safe_delete(message)
@@ -608,7 +593,6 @@ class SecurityEventsCog(commands.Cog):
             user = message.author
             now = time.time()
 
-            # 🔗 Anti-Invite Link Guard
             if conf.get("anti_invite") and content:
                 invite_match = re.search(r"(https?://)?(www\.)?(discord\.gg|discord\.com/invite|discordapp\.com/invite)/([a-zA-Z0-9]+)", content, re.IGNORECASE)
                 if invite_match:
@@ -624,7 +608,6 @@ class SecurityEventsCog(commands.Cog):
                             return
                         except: pass
 
-            # 🖼️ OCR Scanner
             if conf.get("image_scanner") and message.attachments:
                 for att in message.attachments:
                     if att.content_type and att.content_type.startswith('image/'):
@@ -643,7 +626,6 @@ class SecurityEventsCog(commands.Cog):
                                             except: pass
                                             return
 
-            # 🤖 Self-Bot Detection
             if conf.get("self_bot") and len(content) > 150:
                 last_msg_time = user_message_timestamps[user.id][-1] if user_message_timestamps[user.id] else 0
                 if last_msg_time > 0 and (now - last_msg_time) < 0.5:
@@ -654,21 +636,16 @@ class SecurityEventsCog(commands.Cog):
                     except: pass
                     return
 
-            # 👁️ Anti-Dox Guard (แก้ไขปัญหาตรวจจับพลาดโดนคนบริสุทธิ์)
             if conf.get("anti_dox") and content:
-                # กรอง URL และ Code Block ทิ้งก่อนสแกนเพื่อความแม่นยำ
                 clean_text = re.sub(r"```[\s\S]*?```|`[^`]*`", "", content)
                 clean_text = re.sub(URL_REGEX, "", clean_text, flags=re.IGNORECASE)
 
-                # 1. ตรวจสอบเลขบัตรประชาชนไทยด้วยคณิตศาสตร์ Modulo 11
                 thai_ids = re.findall(r"\b[1-9]\d{12}\b", clean_text)
                 has_real_thai_id = any(is_valid_thai_id(tid) for tid in thai_ids)
 
-                # 2. ตรวจสอบ Public IP Address (ไม่นับ 127.0.0.1 หรือ IP ภายใน)
                 ips = re.findall(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", clean_text)
                 has_real_ip = any(is_valid_public_ip(ip) for ip in ips)
 
-                # 3. ตรวจสอบเบอร์โทรศัพท์ไทย 10 หลัก
                 phones = re.findall(r"\b(?:06|08|09)\d{8}\b", clean_text)
                 has_phone = len(phones) > 0
 

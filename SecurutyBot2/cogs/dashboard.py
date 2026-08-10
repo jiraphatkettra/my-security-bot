@@ -16,7 +16,7 @@ from cogs.database import (
 )
 from cogs.web_verify import generate_verify_signature, PORT
 
-interaction_cooldowns = defaultdict(list) # ⏱️ สำหรับ Button Abuse
+interaction_cooldowns = defaultdict(list)
 
 def check_role_hierarchy(actor: discord.Member, target: discord.Member) -> bool:
     if actor.guild.owner_id == actor.id:
@@ -79,7 +79,6 @@ class PunishModal(Modal, title="⚖️ ระบุเหตุผลการ�
                 await self.target.kick(reason=reason)
                 await send_audit_log(interaction.guild, "👢 ลงโทษ: Kick", f"เป้าหมาย: {self.target.mention}\nแอดมิน: {interaction.user.mention}", discord.Color.red())
             elif self.action == "ban":
-                # 🔄 Auto IP Sync
                 ban_user_ips(interaction.guild.id, self.target.id, f"Dashboard Ban by {interaction.user.name}")
                 await self.target.ban(reason=reason)
                 await send_audit_log(interaction.guild, "🔨 ลงโทษ: Ban (+ Auto IP Blacklist Sync)", f"เป้าหมาย: {self.target.mention}\nแอดมิน: {interaction.user.mention}", discord.Color.dark_red())
@@ -235,7 +234,6 @@ def get_public_verify_host(guild_id: int) -> str:
             dom = f"http://{dom}"
         return dom.rstrip("/")
     
-    # Auto-detect Discloud Cloud Hosting Environment
     discloud_domain = os.getenv("DISCLOUD_DOMAIN")
     if discloud_domain:
         if not discloud_domain.startswith("http://") and not discloud_domain.startswith("https://"):
@@ -246,7 +244,6 @@ def get_public_verify_host(guild_id: int) -> str:
     if discloud_id:
         return f"https://{discloud_id.strip()}.discloud.app"
 
-    # Auto-detect SquareCloud Hosting Environment
     square_domain = os.getenv("SQUARECLOUD_DOMAIN") or os.getenv("SQUARECLOUD_SUBDOMAIN")
     if square_domain:
         if not square_domain.startswith("http://") and not square_domain.startswith("https://"):
@@ -261,7 +258,6 @@ def get_public_verify_host(guild_id: int) -> str:
     if env_host:
         return env_host.strip().rstrip("/")
     
-    # Auto-detect local network IP address for mobile devices on same WiFi
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -306,7 +302,6 @@ class VerifyMenuView(BaseSecurityView):
         self.guild_id = guild_id
         conf = get_config(guild_id)
 
-        # IP Guard Toggle Button
         ip_guard_label = "🛡️ IP Ban Guard: เปิด" if conf["ip_ban_guard"] else "🛡️ IP Ban Guard: ปิด"
         ip_guard_style = discord.ButtonStyle.success if conf["ip_ban_guard"] else discord.ButtonStyle.danger
         
@@ -314,7 +309,6 @@ class VerifyMenuView(BaseSecurityView):
         btn_ip_guard.callback = self.toggle_ip_guard
         self.add_item(btn_ip_guard)
 
-        # Anti-VPN Toggle Button
         vpn_label = "🌐 Anti-VPN: เปิด" if conf.get("anti_vpn") else "🌐 Anti-VPN: ปิด"
         vpn_style = discord.ButtonStyle.success if conf.get("anti_vpn") else discord.ButtonStyle.danger
         
@@ -494,9 +488,15 @@ class SecurityMenuView(BaseSecurityView):
         update_config(self.guild_id, "suspect_scan", int(not get_config(self.guild_id).get("suspect_scan")))
         await interaction.response.edit_message(view=SecurityMenuView(self.guild_id))
 
-    @discord.ui.button(label="🔙 กลับ", style=discord.ButtonStyle.secondary, row=3)
-    async def btn_back(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(content=None, embed=get_main_embed(), view=MainDashboardView())
+    @discord.ui.button(label="🔍 สแกนย้อนหลัง (Manual)", style=discord.ButtonStyle.primary, row=3)
+    async def btn_manual_backlog_scan(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.defer(ephemeral=True)
+        sec_cog = interaction.client.get_cog("SecurityEventsCog")
+        if sec_cog and hasattr(sec_cog, "run_guild_backlog_scan"):
+            scanned, deleted = await sec_cog.run_guild_backlog_scan(interaction.guild)
+            await interaction.followup.send(f"✅ **สแกนความปลอดภัยย้อนหลังสำเร็จ!**\n• สแกนย้อนหลังไป: **{scanned}** ข้อความ\n• ตรวจพบและลบข้อความสุ่มเสี่ยง: **{deleted}** ข้อความ", ephemeral=True)
+        else:
+            await interaction.followup.send("❌ ระบบสแกนไม่พร้อมใช้งาน", ephemeral=True)
 
     @discord.ui.button(label="🚨 Global Panic (ล็อกดาวน์)", style=discord.ButtonStyle.danger, row=3)
     async def btn_panic(self, interaction: discord.Interaction, button: Button):
@@ -532,6 +532,10 @@ class SecurityMenuView(BaseSecurityView):
             await inter.followup.send("✅ ปลดล็อกดาวน์สำเร็จ!", ephemeral=False)
 
         await interaction.response.send_modal(OwnerPinModal("Unpanic Lockdown", do_unpanic))
+
+    @discord.ui.button(label="🔙 กลับ", style=discord.ButtonStyle.secondary, row=3)
+    async def btn_back(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.edit_message(content=None, embed=get_main_embed(), view=MainDashboardView())
 
 class SettingsMenuView(BaseSecurityView):
     def __init__(self, guild_id: int):
