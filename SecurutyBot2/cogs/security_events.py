@@ -29,7 +29,7 @@ PHONE_REGEX = r"\b(?:06|08|09)\d{8}\b"
 THAI_ID_REGEX = r"\b[1-9]\d{12}\b"
 IP_REGEX = r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b"
 
-BAD_WORDS = ["คำหยาบ1", "คำหยาบ2", "scam", "free nitro", "steam promo"]
+BAD_WORDS = []  # ปิดการสแกนคำหยาบ (ใส่คำลงใน [ ] หากต้องการให้สแกน)
 SHORTENER_DOMAINS = ["bit.ly", "tinyurl.com", "t.co", "cutt.ly", "is.gd", "v.ht"]
 
 SPAM_THRESHOLD = 4
@@ -296,8 +296,8 @@ class SecurityEventsCog(commands.Cog):
                                 await asyncio.sleep(0.1)
                                 continue
 
-                        # 6. Bad Words
-                        if content and any(w in content.lower() for w in BAD_WORDS):
+                        # 6. Bad Words (ปิดการสแกนหาก BAD_WORDS เป็นลิสต์ว่าง)
+                        if BAD_WORDS and content and any(w in content.lower() for w in BAD_WORDS):
                             await safe_delete(message)
                             await asyncio.sleep(0.1)
                             continue
@@ -716,7 +716,7 @@ class SecurityEventsCog(commands.Cog):
                 except: pass
                 return
 
-            if content and any(w in content.lower() for w in BAD_WORDS):
+            if BAD_WORDS and content and any(w in content.lower() for w in BAD_WORDS):
                 await safe_delete(message)
                 return
 
