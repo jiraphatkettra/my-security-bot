@@ -3,6 +3,7 @@ import json
 import time
 import datetime
 import sqlite3
+import asyncio
 from collections import defaultdict
 from discord import app_commands
 from discord.ext import commands
@@ -496,26 +497,28 @@ class SecurityMenuView(BaseSecurityView):
             scanned, deleted, suspect_list = await sec_cog.run_guild_backlog_scan(interaction.guild)
             suspect_count = len(suspect_list)
             
-            msg = (
+            first_msg = (
                 f"✅ **สแกนความปลอดภัยย้อนหลังสำเร็จ!**\n"
                 f"• สแกนข้อความย้อนหลังไป: **{scanned}** ข้อความ\n"
                 f"• ตรวจพบและลบข้อความสุ่มเสี่ยง: **{deleted}** ข้อความ\n"
-                f"• ตรวจพบสมาชิกน่าสงสัยในดิส: **{suspect_count}** บัญชี\n"
+                f"• ตรวจพบสมาชิกน่าสงสัยในดิส: **{suspect_count}** บัญชี"
             )
-            
+            await interaction.followup.send(first_msg, ephemeral=True)
+
             if suspect_count > 0:
-                msg += "\n📌 **รายชื่อสมาชิกน่าสงสัย (สมัครใหม่ / ไม่มีรูปโปรไฟล์ / ชื่อเสี่ยง):**\n"
-                member_lines = []
                 now_utc = datetime.datetime.now(datetime.timezone.utc)
-                for m in suspect_list[:20]:
-                    age_days = (now_utc - m.created_at).days
-                    member_lines.append(f"• {m.mention} (`{m.id}`) - อายุบัญชี {age_days} วัน")
-                
-                msg += "\n".join(member_lines)
-                if suspect_count > 20:
-                    msg += f"\n\n*...และอีก {suspect_count - 20} บัญชี (บันทึกเข้า Log)*"
-            
-            await interaction.followup.send(msg, ephemeral=True)
+                chunk_size = 15
+                total_batches = ((suspect_count - 1) // chunk_size) + 1
+
+                for i in range(0, suspect_count, chunk_size):
+                    chunk = suspect_list[i : i + chunk_size]
+                    batch_lines = [f"📌 **รายชื่อสมาชิกน่าสงสัย (ชุดที่ {i//chunk_size + 1}/{total_batches}):**"]
+                    for m in chunk:
+                        age_days = (now_utc - m.created_at).days
+                        batch_lines.append(f"• {m.mention} (`{m.id}`) - อายุบัญชี {age_days} วัน")
+                    
+                    await interaction.followup.send("\n".join(batch_lines), ephemeral=True)
+                    await asyncio.sleep(0.2)
         else:
             await interaction.followup.send("❌ ระบบสแกนไม่พร้อมใช้งาน", ephemeral=True)
 

@@ -308,7 +308,7 @@ class SecurityEventsCog(commands.Cog):
             except Exception as e:
                 print(f"Error scanning channel {channel.name}: {e}")
 
-        # 2. 👥 Scan Current Server Members for Suspicious Accounts (สแกนไอดีสมาชิกน่าสงสัยย้อนหลัง)
+        # 2. 👥 Scan Current Server Members for Suspicious Accounts (แบ่งส่งทีละชุด ไม่ให้รายชื่อขาดหาย)
         suspicious_members = []
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         for member in guild.members:
@@ -323,21 +323,27 @@ class SecurityEventsCog(commands.Cog):
                 suspicious_members.append(member)
 
         if suspicious_members:
-            summary_lines = []
-            for m in suspicious_members[:15]:
-                age_days = (now_utc - m.created_at).days
-                summary_lines.append(f"• {m.mention} (`{m.id}`) - อายุบัญชี {age_days} วัน")
-            
-            suspect_details = "\n".join(summary_lines)
-            if len(suspicious_members) > 15:
-                suspect_details += f"\n*...และอีก {len(suspicious_members) - 15} บัญชี*"
+            total_members = len(suspicious_members)
+            chunk_size = 20
+            total_batches = ((total_members - 1) // chunk_size) + 1
+
+            for batch_idx in range(total_batches):
+                chunk = suspicious_members[batch_idx * chunk_size : (batch_idx + 1) * chunk_size]
+                summary_lines = []
+                for m in chunk:
+                    age_days = (now_utc - m.created_at).days
+                    summary_lines.append(f"• {m.mention} (`{m.id}`) - อายุบัญชี {age_days} วัน")
                 
-            await send_audit_log(
-                guild,
-                "🔍 ผลการสแกนไอดีน่าสงสัยย้อนหลัง (Manual Suspect Member Scan)",
-                f"ตรวจพบสมาชิกน่าสงสัยในเซิร์ฟเวอร์ทั้งหมด **{len(suspicious_members)}** บัญชี:\n{suspect_details}\n\n⚠️ *ระบบได้บันทึกรายชื่อไว้ใน Log เรียบร้อย*",
-                discord.Color.gold()
-            )
+                suspect_details = "\n".join(summary_lines)
+                batch_title = f"🔍 สแกนไอดีน่าสงสัยย้อนหลัง ({batch_idx + 1}/{total_batches})" if total_batches > 1 else "🔍 ผลการสแกนไอดีน่าสงสัยย้อนหลัง"
+                
+                await send_audit_log(
+                    guild,
+                    batch_title,
+                    f"พบสมาชิกน่าสงสัยทั้งหมด **{total_members}** บัญชี (ชุดที่ {batch_idx + 1}/{total_batches}):\n\n{suspect_details}",
+                    discord.Color.gold()
+                )
+                await asyncio.sleep(0.3)
 
         return scanned_count, deleted_count, suspicious_members
 
