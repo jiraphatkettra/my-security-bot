@@ -29,13 +29,20 @@ async def load_cogs():
     await bot.load_extension("cogs.web_verify")
     await bot.load_extension("cogs.dashboard")
     await bot.load_extension("cogs.security_events")
-    try:
-        synced = await bot.tree.sync()
-        print(f"✅ Synced {len(synced)} Slash Commands with Discord!")
-    except Exception as e:
-        print(f"⚠️ Slash Command Sync Error: {e}")
 
 bot.setup_hook = load_cogs
+
+@bot.event
+async def on_ready():
+    print(f"✅ Ultimate Enterprise Security Bot is ONLINE as {bot.user}!")
+    try:
+        await bot.tree.sync()
+        for guild in bot.guilds:
+            bot.tree.copy_global_to(guild=guild)
+            await bot.tree.sync(guild=guild)
+        print(f"⚡ Slash Commands synced INSTANTLY across {len(bot.guilds)} guilds!")
+    except Exception as e:
+        print(f"⚠️ Slash Sync Warning: {e}")
 
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN and os.path.exists(".env"):
