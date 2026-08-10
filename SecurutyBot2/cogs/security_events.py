@@ -216,12 +216,13 @@ class SecurityEventsCog(commands.Cog):
         await self.bot.wait_until_ready()
 
     async def run_guild_backlog_scan(self, guild: discord.Guild):
-        """ฟังก์ชันสแกนความปลอดภัยย้อนหลังแบบกดปุ่มสั่งงาน Manual เท่านั้น"""
+        """ฟังก์ชันสแกนความปลอดภัยย้อนหลังแบบ Manual (สแกนทั้งข้อความแชท + สแกนไอดีสมาชิกน่าสงสัย)"""
         conf = get_config(guild.id)
         guild_invites = await get_cached_guild_invites(guild) if conf.get("anti_invite") else []
         scanned_count = 0
         deleted_count = 0
 
+        # 1. 💬 Scan Text Channels History
         for channel in guild.text_channels:
             if not channel.permissions_for(guild.me).read_messages or not channel.permissions_for(guild.me).read_message_history:
                 continue
@@ -239,7 +240,7 @@ class SecurityEventsCog(commands.Cog):
 
                     content = message.content.strip() if message.content else ""
                     
-                    # 1. Discord Bot Token Leak
+                    # Token Leak
                     if content and re.search(DISCORD_TOKEN_REGEX, content):
                         await safe_delete(message)
                         deleted_count += 1
@@ -247,7 +248,7 @@ class SecurityEventsCog(commands.Cog):
                         await asyncio.sleep(0.1)
                         continue
                     
-                    # 2. Dangerous attachments (Malware)
+                    # Dangerous attachments (Malware)
                     if conf.get("malware") and message.attachments:
                         for att in message.attachments:
                             if att.filename.lower().endswith(DANGEROUS_EXTENSIONS):
@@ -257,7 +258,7 @@ class SecurityEventsCog(commands.Cog):
                                 await asyncio.sleep(0.1)
                                 break
                                 
-                    # 3. Phishing Links
+                    # Phishing Links
                     if conf.get("phishing_api") and content:
                         urls = re.findall(URL_REGEX, content, re.IGNORECASE)
                         has_scam = False
@@ -272,7 +273,7 @@ class SecurityEventsCog(commands.Cog):
                         if has_scam:
                             continue
 
-                    # 4. Anti-Invite Links
+                    # Anti-Invite Links
                     if conf.get("anti_invite") and content:
                         invite_match = re.search(r"(https?://)?(www\.)?(discord\.gg|discord\.com/invite|discordapp\.com/invite)/([a-zA-Z0-9]+)", content, re.IGNORECASE)
                         if invite_match and invite_match.group(4) not in guild_invites:
@@ -282,7 +283,7 @@ class SecurityEventsCog(commands.Cog):
                             await asyncio.sleep(0.1)
                             continue
 
-                    # 5. Anti-Dox (Thai ID Modulo 11 & Public IP & Phone)
+                    # Anti-Dox (Thai ID Modulo 11 & Public IP & Phone)
                     if conf.get("anti_dox") and content:
                         clean_text = re.sub(r"```[\s\S]*?```|`[^`]*`", "", content)
                         clean_text = re.sub(URL_REGEX, "", clean_text, flags=re.IGNORECASE)
@@ -296,7 +297,7 @@ class SecurityEventsCog(commands.Cog):
                             await asyncio.sleep(0.1)
                             continue
 
-                    # 6. Bad Words (ถ้าตั้งไว้)
+                    # Bad Words (ถ้าตั้งไว้)
                     if BAD_WORDS and content and any(w in content.lower() for w in BAD_WORDS):
                         await safe_delete(message)
                         deleted_count += 1
@@ -306,7 +307,39 @@ class SecurityEventsCog(commands.Cog):
                     await asyncio.sleep(0.01)
             except Exception as e:
                 print(f"Error scanning channel {channel.name}: {e}")
-        return scanned_count, deleted_count
+
+        # 2. 👥 Scan Current Server Members for Suspicious Accounts (สแกนไอดีสมาชิกน่าสงสัยย้อนหลัง)
+        suspicious_members = []
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        for member in guild.members:
+            if member.bot:
+                continue
+            account_age_days = (now_utc - member.created_at).days
+            is_default_avatar = member.avatar is None
+            is_very_new = account_age_days < 7
+            has_suspicious_name = bool(re.search(r"discord|nitro|steam|gift|free|promo|bot|scam", member.name, re.IGNORECASE))
+            
+            if is_very_new or (is_default_avatar and account_age_days < 14) or has_suspicious_name:
+                suspicious_members.append(member)
+
+        if suspicious_members:
+            summary_lines = []
+            for m in suspicious_members[:15]:
+                age_days = (now_utc - m.created_at).days
+                summary_lines.append(f"• {m.mention} (`{m.id}`) - อายุบัญชี {age_days} วัน")
+            
+            suspect_details = "\n".join(summary_lines)
+            if len(suspicious_members) > 15:
+                suspect_details += f"\n*...และอีก {len(suspicious_members) - 15} บัญชี*"
+                
+            await send_audit_log(
+                guild,
+                "🔍 ผลการสแกนไอดีน่าสงสัยย้อนหลัง (Manual Suspect Member Scan)",
+                f"ตรวจพบสมาชิกน่าสงสัยในเซิร์ฟเวอร์ทั้งหมด **{len(suspicious_members)}** บัญชี:\n{suspect_details}\n\n⚠️ *ระบบได้บันทึกรายชื่อไว้ใน Log เรียบร้อย*",
+                discord.Color.gold()
+            )
+
+        return scanned_count, deleted_count, len(suspicious_members)
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -317,7 +350,7 @@ class SecurityEventsCog(commands.Cog):
         guild = member.guild
         conf = get_config(guild.id)
         
-        # 1. 🔍 Suspicious Account Scanner (สแกนไอดีสมัครใหม่/น่าสงสัย)
+        # 1. 🔍 Suspicious Account Scanner (ระบบออโต้สแกนไอดีสมัครใหม่ขณะย้ายเข้าดิส)
         now_utc = datetime.datetime.now(datetime.timezone.utc)
         account_age_days = (now_utc - member.created_at).days
         account_age_hours = int((now_utc - member.created_at).total_seconds() / 3600)

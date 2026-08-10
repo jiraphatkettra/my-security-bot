@@ -493,8 +493,11 @@ class SecurityMenuView(BaseSecurityView):
         await interaction.response.defer(ephemeral=True)
         sec_cog = interaction.client.get_cog("SecurityEventsCog")
         if sec_cog and hasattr(sec_cog, "run_guild_backlog_scan"):
-            scanned, deleted = await sec_cog.run_guild_backlog_scan(interaction.guild)
-            await interaction.followup.send(f"✅ **สแกนความปลอดภัยย้อนหลังสำเร็จ!**\n• สแกนย้อนหลังไป: **{scanned}** ข้อความ\n• ตรวจพบและลบข้อความสุ่มเสี่ยง: **{deleted}** ข้อความ", ephemeral=True)
+            scanned, deleted, suspect_count = await sec_cog.run_guild_backlog_scan(interaction.guild)
+            msg = f"✅ **สแกนความปลอดภัยย้อนหลังสำเร็จ!**\n• สแกนข้อความย้อนหลังไป: **{scanned}** ข้อความ\n• ตรวจพบและลบข้อความสุ่มเสี่ยง: **{deleted}** ข้อความ\n• ตรวจพบสมาชิกน่าสงสัยในดิส: **{suspect_count}** บัญชี"
+            if suspect_count > 0:
+                msg += "\n*(ระบบส่งสรุปรายชื่อสมาชิกน่าสงสัยเข้าห้อง Log เรียบร้อย)*"
+            await interaction.followup.send(msg, ephemeral=True)
         else:
             await interaction.followup.send("❌ ระบบสแกนไม่พร้อมใช้งาน", ephemeral=True)
 
