@@ -339,7 +339,7 @@ class SecurityEventsCog(commands.Cog):
                 discord.Color.gold()
             )
 
-        return scanned_count, deleted_count, len(suspicious_members)
+        return scanned_count, deleted_count, suspicious_members
 
     @commands.Cog.listener()
     async def on_ready(self):

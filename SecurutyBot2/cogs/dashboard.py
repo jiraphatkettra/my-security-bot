@@ -493,10 +493,28 @@ class SecurityMenuView(BaseSecurityView):
         await interaction.response.defer(ephemeral=True)
         sec_cog = interaction.client.get_cog("SecurityEventsCog")
         if sec_cog and hasattr(sec_cog, "run_guild_backlog_scan"):
-            scanned, deleted, suspect_count = await sec_cog.run_guild_backlog_scan(interaction.guild)
-            msg = f"✅ **สแกนความปลอดภัยย้อนหลังสำเร็จ!**\n• สแกนข้อความย้อนหลังไป: **{scanned}** ข้อความ\n• ตรวจพบและลบข้อความสุ่มเสี่ยง: **{deleted}** ข้อความ\n• ตรวจพบสมาชิกน่าสงสัยในดิส: **{suspect_count}** บัญชี"
+            scanned, deleted, suspect_list = await sec_cog.run_guild_backlog_scan(interaction.guild)
+            suspect_count = len(suspect_list)
+            
+            msg = (
+                f"✅ **สแกนความปลอดภัยย้อนหลังสำเร็จ!**\n"
+                f"• สแกนข้อความย้อนหลังไป: **{scanned}** ข้อความ\n"
+                f"• ตรวจพบและลบข้อความสุ่มเสี่ยง: **{deleted}** ข้อความ\n"
+                f"• ตรวจพบสมาชิกน่าสงสัยในดิส: **{suspect_count}** บัญชี\n"
+            )
+            
             if suspect_count > 0:
-                msg += "\n*(ระบบส่งสรุปรายชื่อสมาชิกน่าสงสัยเข้าห้อง Log เรียบร้อย)*"
+                msg += "\n📌 **รายชื่อสมาชิกน่าสงสัย (สมัครใหม่ / ไม่มีรูปโปรไฟล์ / ชื่อเสี่ยง):**\n"
+                member_lines = []
+                now_utc = datetime.datetime.now(datetime.timezone.utc)
+                for m in suspect_list[:20]:
+                    age_days = (now_utc - m.created_at).days
+                    member_lines.append(f"• {m.mention} (`{m.id}`) - อายุบัญชี {age_days} วัน")
+                
+                msg += "\n".join(member_lines)
+                if suspect_count > 20:
+                    msg += f"\n\n*...และอีก {suspect_count - 20} บัญชี (บันทึกเข้า Log)*"
+            
             await interaction.followup.send(msg, ephemeral=True)
         else:
             await interaction.followup.send("❌ ระบบสแกนไม่พร้อมใช้งาน", ephemeral=True)
@@ -651,7 +669,7 @@ class MainDashboardView(BaseSecurityView):
 
     @discord.ui.button(label="💾 ระบบ Backup & Restore", style=discord.ButtonStyle.secondary, row=1)
     async def btn_backup(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(embed=discord.Embed(title="💾 Backup & Restore", color=discord.Color.green()), view=BackupMenuView())
+        await interaction.response.edit_message(embed=embed, view=BackupMenuView())
 
 
 class DashboardCog(commands.Cog):
