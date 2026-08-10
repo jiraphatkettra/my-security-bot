@@ -669,7 +669,7 @@ class MainDashboardView(BaseSecurityView):
 
     @discord.ui.button(label="💾 ระบบ Backup & Restore", style=discord.ButtonStyle.secondary, row=1)
     async def btn_backup(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(embed=embed, view=BackupMenuView())
+        await interaction.response.edit_message(embed=discord.Embed(title="💾 Backup & Restore", color=discord.Color.green()), view=BackupMenuView())
 
 
 class DashboardCog(commands.Cog):
