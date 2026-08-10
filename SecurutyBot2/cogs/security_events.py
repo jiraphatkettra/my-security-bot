@@ -218,14 +218,16 @@ class SecurityEventsCog(commands.Cog):
         await self.bot.wait_until_ready()
 
     async def scan_backlog_messages(self):
+        """ระบบสแกนความปลอดภัยย้อนหลังครอบคลุมทุกฟังก์ชันความปลอดภัยเมื่อบอทเริ่มทำงาน"""
         await self.bot.wait_until_ready()
         if self.backlog_scanned:
             return
         self.backlog_scanned = True
-        print("🔍 Starting Backlog Message Security Scan...")
+        print("🔍 Starting Full Backlog Message Security Scan...")
         
         for guild in self.bot.guilds:
             conf = get_config(guild.id)
+            guild_invites = await get_cached_guild_invites(guild) if conf.get("anti_invite") else []
             for channel in guild.text_channels:
                 if not channel.permissions_for(guild.me).read_messages or not channel.permissions_for(guild.me).read_message_history:
                     continue
@@ -242,36 +244,69 @@ class SecurityEventsCog(commands.Cog):
 
                         content = message.content.strip() if message.content else ""
                         
-                        # 1. Bot Token Leak
+                        # 1. Discord Bot Token Leak
                         if content and re.search(DISCORD_TOKEN_REGEX, content):
                             await safe_delete(message)
                             await send_audit_log(guild, "🚨 ตรวจพบ DISCORD BOT TOKEN LEAK (Backlog Scan)!", f"ผู้ใช้ {message.author.mention} โพสต์ Discord Bot Token ใน {channel.mention}\n*ลบข้อความย้อนหลังสำเร็จ*", discord.Color.dark_red())
-                            await asyncio.sleep(0.2)
+                            await asyncio.sleep(0.1)
                             continue
                         
-                        # 2. Dangerous attachments
-                        if message.attachments:
+                        # 2. Dangerous attachments (Malware)
+                        if conf.get("malware") and message.attachments:
                             for att in message.attachments:
                                 if att.filename.lower().endswith(DANGEROUS_EXTENSIONS):
                                     await safe_delete(message)
                                     await send_audit_log(guild, "🛡️ มัลแวร์สกัดกั้น (Backlog Scan)", f"ลบไฟล์อันตรายย้อนหลัง `{att.filename}` จาก {message.author.mention} ใน {channel.mention}", discord.Color.red())
-                                    await asyncio.sleep(0.2)
+                                    await asyncio.sleep(0.1)
                                     break
                                     
                         # 3. Phishing Links
                         if conf.get("phishing_api") and content:
                             urls = re.findall(URL_REGEX, content, re.IGNORECASE)
+                            has_scam = False
                             for url in urls:
                                 if await check_phishing_api(url):
                                     await safe_delete(message)
                                     await send_audit_log(guild, "🚨 ลิงก์สแกมสกัดกั้น (Backlog Scan)", f"ลบข้อความลิงก์สแกมย้อนหลัง จาก {message.author.mention} ใน {channel.mention}", discord.Color.red())
-                                    await asyncio.sleep(0.2)
+                                    await asyncio.sleep(0.1)
+                                    has_scam = True
                                     break
-                        await asyncio.sleep(0.05)
+                            if has_scam:
+                                continue
+
+                        # 4. Anti-Invite Links
+                        if conf.get("anti_invite") and content:
+                            invite_match = re.search(r"(https?://)?(www\.)?(discord\.gg|discord\.com/invite|discordapp\.com/invite)/([a-zA-Z0-9]+)", content, re.IGNORECASE)
+                            if invite_match and invite_match.group(4) not in guild_invites:
+                                await safe_delete(message)
+                                await send_audit_log(guild, "🔗 Anti-Invite Guard (Backlog Scan)", f"ลบลิงก์เชิญเซิร์ฟเวอร์อื่นย้อนหลัง จาก {message.author.mention} ใน {channel.mention}", discord.Color.orange())
+                                await asyncio.sleep(0.1)
+                                continue
+
+                        # 5. Anti-Dox (Thai ID Modulo 11 & Public IP & Phone)
+                        if conf.get("anti_dox") and content:
+                            clean_text = re.sub(r"```[\s\S]*?```|`[^`]*`", "", content)
+                            clean_text = re.sub(URL_REGEX, "", clean_text, flags=re.IGNORECASE)
+                            thai_ids = re.findall(r"\b[1-9]\d{12}\b", clean_text)
+                            ips = re.findall(r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", clean_text)
+                            phones = re.findall(r"\b(?:06|08|09)\d{8}\b", clean_text)
+                            if any(is_valid_thai_id(tid) for tid in thai_ids) or any(is_valid_public_ip(ip) for ip in ips) or len(phones) > 0:
+                                await safe_delete(message)
+                                await send_audit_log(guild, "👁️ ANTI-DOX (Backlog Scan)", f"ลบการเปิดเผยข้อมูลสำคัญย้อนหลัง จาก {message.author.mention} ใน {channel.mention}", discord.Color.red())
+                                await asyncio.sleep(0.1)
+                                continue
+
+                        # 6. Bad Words
+                        if content and any(w in content.lower() for w in BAD_WORDS):
+                            await safe_delete(message)
+                            await asyncio.sleep(0.1)
+                            continue
+
+                        await asyncio.sleep(0.02)
                 except Exception as e:
                     print(f"Error scanning channel {channel.name}: {e}")
-                await asyncio.sleep(0.1)
-        print("✅ Backlog Message Security Scan completed!")
+                await asyncio.sleep(0.05)
+        print("✅ Full Backlog Message Security Scan completed!")
 
     @commands.Cog.listener()
     async def on_ready(self):
