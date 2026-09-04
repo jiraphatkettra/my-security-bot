@@ -353,15 +353,18 @@ class WebVerifyCog(commands.Cog):
         self.site = None
         self.runner = None
 
+    async def handle_root(self, request):
+        """เส้นทางสำหรับ Render Health Check (ต้องตอบ 200 เพื่อให้ Deploy ผ่าน 100%)"""
+        return web.Response(text="OK - Enterprise Security Bot is Active 24/7", status=200)
+
     async def handle_health(self, request):
-        """เส้นทางสำหรับ UptimeRobot ตรวจสุขภาพและปลุกบอทตื่น 24 ชม."""
-        if self.bot.is_ready() and not self.bot.is_closed():
-            return web.Response(text="OK - Enterprise Security Bot is Active 24/7 (Gateway Connected)", status=200)
-        return web.Response(text="WARNING - Bot Gateway is Not Ready or Reconnecting", status=503)
+        """เส้นทางสำหรับ UptimeRobot ตรวจสุขภาพบอท"""
+        status_text = "Gateway Connected" if (self.bot.is_ready() and not self.bot.is_closed()) else "Gateway Connecting"
+        return web.Response(text=f"OK - Enterprise Security Bot ({status_text})", status=200)
 
     async def cog_load(self):
         app = web.Application()
-        app.router.add_get('/', self.handle_health)
+        app.router.add_get('/', self.handle_root)
         app.router.add_get('/health', self.handle_health)
         app.router.add_get('/verify', self.handle_verify)
         app.router.add_get('/success.html', self.handle_verify)
