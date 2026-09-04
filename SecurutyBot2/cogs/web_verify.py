@@ -354,8 +354,10 @@ class WebVerifyCog(commands.Cog):
         self.runner = None
 
     async def handle_health(self, request):
-        """เส้นทางสำหรับ UptimeRobot ตรวจสุขภาพและปุกบอทตื่น 24 ชม."""
-        return web.Response(text="OK - Enterprise Security Bot is Active 24/7", status=200)
+        """เส้นทางสำหรับ UptimeRobot ตรวจสุขภาพและปลุกบอทตื่น 24 ชม."""
+        if self.bot.is_ready() and not self.bot.is_closed():
+            return web.Response(text="OK - Enterprise Security Bot is Active 24/7 (Gateway Connected)", status=200)
+        return web.Response(text="WARNING - Bot Gateway is Not Ready or Reconnecting", status=503)
 
     async def cog_load(self):
         app = web.Application()

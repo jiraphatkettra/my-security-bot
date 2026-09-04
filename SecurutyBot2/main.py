@@ -44,6 +44,32 @@ async def on_ready():
     except Exception as e:
         print(f"⚠️ Slash Sync Warning: {e}")
 
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+    if isinstance(error, discord.app_commands.MissingPermissions):
+        msg = "❌ **สิทธิ์ไม่เพียงพอ:** คุณต้องมีสิทธิ์ `Manage Messages` (จัดการข้อความ) ในการใช้งานคำสั่งนี้!"
+    elif isinstance(error, discord.app_commands.BotMissingPermissions):
+        msg = f"❌ **บอทสิทธิ์ไม่พอ:** บอทต้องการสิทธิ์ `{', '.join(error.missing_permissions)}`"
+    else:
+        msg = f"⚠️ **เกิดข้อผิดพลาด:** {error}"
+
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
+    except Exception:
+        pass
+
+@bot.event
+async def on_command_error(ctx: commands.Context, error: commands.CommandError):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send(f"❌ {ctx.author.mention} **สิทธิ์ไม่เพียงพอ:** คุณต้องมีสิทธิ์ `Manage Messages` (จัดการข้อความ) ในการใช้งานคำสั่งนี้!", delete_after=10)
+    elif isinstance(error, commands.CommandNotFound):
+        pass
+    else:
+        await ctx.send(f"⚠️ เกิดข้อผิดพลาด: {error}", delete_after=10)
+
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN and os.path.exists(".env"):
     try:
@@ -60,14 +86,8 @@ async def main():
         return
 
     print("🚀 Starting Enterprise Security Bot (High-Availability Gateway Defense)...")
-    retry_delay = 5
-    while True:
-        try:
-            async with bot:
-                await bot.start(TOKEN, reconnect=True)
-        except (discord.errors.GatewayNotFound, discord.errors.HTTPException, asyncio.TimeoutError, Exception) as e:
-            print(f"⚠️ เกิดข้อผิดพลาดในการเชื่อมต่อ Gateway ({e}) - กำลังพยายาม Reconnect ใน {retry_delay} วินาที...")
-            await asyncio.sleep(retry_delay)
+    async with bot:
+        await bot.start(TOKEN, reconnect=True)
 
 if __name__ == "__main__":
     try:
