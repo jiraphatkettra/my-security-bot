@@ -94,19 +94,22 @@ d:\BOTBANG\SecurutyBot - Copy\SecurutyBot2\
 
 ---
 
-## 💻 5. ระบบ Dashboard & UI Architecture
+## 💻 5. ระบบ Dashboard & Global Enterprise UI Architecture
 
-ไฟล์ `cogs/dashboard.py` ควบคุมการทำงานของหน้าควบคุมทั้งหมดผ่าน Discord UI Components:
+ไฟล์ `cogs/dashboard.py` ควบคุมการทำงานของหน้าควบคุมทั้งหมดผ่าน Discord UI Components สไตล์ Global Enterprise (Rythm / Enterprise SOC):
 
 - **คำสั่งเปิด:** `/security` หรือ `bang!security` หรือ `bang!panel` (ต้องการสิทธิ์ `manage_messages`)
-- **Main Dashboard View (`MainDashboardView`):**
-  - แสดงผล **SOC Real-Time Stats** (`get_security_stats(guild_id)`) นับจำนวนภัยคุกคามที่ถูกสกัดกั้น
-  - ปุ่ม `🛡️ ความปลอดภัยขั้นสูง` -> เปิด `SecurityMenuView`
-  - ปุ่ม `🔐 ระบบ Verify & IP Guard` -> เปิด `VerifyMenuView`
-  - ปุ่ม `⚖️ จัดการสมาชิก & กักกัน` -> เปิด `ModerationMenuView`
-  - ปุ่ม `⚙️ ตั้งค่า & Honeypot` -> เปิด `SettingsMenuView`
-  - ปุ่ม `💾 ระบบ Backup & Restore` -> เปิด `BackupMenuView`
-  - ปุ่ม `🔰 ป้องกันขั้นสูง (2026)` -> เปิด `AdvancedSecurityView` (ควบคุม 9 ระบบความปลอดภัยใหม่)
+- **Main Dashboard Embed & Live Telemetry:**
+  - **Live SOC Telemetry:** Micro-progress bar `[■■■■■■■■□□] 92%` (Security Readiness), Live Process RAM (psutil) เทียบกับโควตา Render 512MB, Gateway Latency & Shard info
+  - **Terminal Incident Feed:** หน้าต่าง Terminal/Log แสดงภัยคุกคามที่ถูกสกัดกั้นล่าสุด 3 รายการแบบสด (ดึงจากตาราง `security_incidents`)
+  - **Threat Analytics:** สถิติรวมและรายการภัยคุกคามที่ถูกระงับ
+  - **Hierarchical Breadcrumbs:** เส้นทางเมนูระดับ Enterprise (เช่น `Security Core › Overview › Live SOC`)
+  - **Global Footer:** `Enterprise SOC v2.8 • Global Gateway: Online • Zero-Trust • UTC 2026`
+- **Main Dashboard Controls (`MainDashboardView`):**
+  - **Row 0: Navigation SelectMenu:** ดรอปดาวน์สำหรับเลือกสลับไปยัง 6 หมวดหมู่หลัก (Security Engine, System Hardening, Identity & Verification, Member Governance, Server Configuration, Disaster Recovery)
+  - **Row 1: Security Posture Profile Presets:** ปุ่มปรับระดับความปลอดภัย 1 คลิก (Balanced Mode, Fortress Mode, Under Attack Mode)
+  - **Row 2: System Actions:** ปุ่มสลับภาษา (`Language: TH` / `Language: EN`), ปุ่มล็อกดาวน์ฉุกเฉิน (`Emergency Lockdown`), และปุ่มรีเฟรช (`Refresh SOC`)
+- **Bilingual Architecture:** ทุก Embed, View, Modal และปุ่ม รองรับทั้งภาษาไทยและอังกฤษผ่านฟังก์ชัน `t(key, lang)`
 
 ---
 

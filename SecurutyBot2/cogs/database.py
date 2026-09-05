@@ -61,6 +61,12 @@ def init_db():
                     count INTEGER DEFAULT 0, 
                     last_triggered REAL, 
                     PRIMARY KEY (guild_id, event_type))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS security_incidents (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER, 
+                    timestamp REAL, 
+                    event_type TEXT, 
+                    description TEXT)''')
     conn.commit()
     
     # อัปเกรดฐานข้อมูลรองรับฟีเจอร์ใหม่
@@ -301,7 +307,7 @@ async def send_audit_log(guild: discord.Guild, title: str, description: str, col
         try: await channel.send(embed=embed)
         except: pass
 
-def increment_security_stat(guild_id: int, event_type: str):
+def increment_security_stat(guild_id: int, event_type: str, details: str = None):
     try:
         conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
@@ -315,6 +321,10 @@ def increment_security_stat(guild_id: int, event_type: str):
         """, (guild_id, event_type, now))
         conn.commit()
         conn.close()
+
+        # Automatically record to live security incident feed
+        desc = details or f"Mitigated {event_type.replace('_', ' ').title()} threat"
+        log_security_incident(guild_id, event_type, desc)
     except Exception as e:
         print(f"Error incrementing security stat: {e}")
 
@@ -329,6 +339,94 @@ def get_security_stats(guild_id: int) -> dict:
     except Exception as e:
         print(f"Error getting security stats: {e}")
         return {}
+
+def log_security_incident(guild_id: int, event_type: str, description: str):
+    """Log an incident to security_incidents and prune old ones beyond 100 entries per guild."""
+    try:
+        now = time.time()
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("INSERT INTO security_incidents (guild_id, timestamp, event_type, description) VALUES (?, ?, ?, ?)",
+                  (guild_id, now, event_type, description))
+        # Keep maximum 100 records per guild to save disk/memory
+        c.execute("""
+            DELETE FROM security_incidents 
+            WHERE guild_id = ? AND id NOT IN (
+                SELECT id FROM security_incidents WHERE guild_id = ? ORDER BY id DESC LIMIT 100
+            )
+        """, (guild_id, guild_id))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error logging security incident: {e}")
+
+def get_recent_incidents(guild_id: int, limit: int = 4) -> list:
+    """Retrieve recent mitigated security incidents for live terminal feed."""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT timestamp, event_type, description FROM security_incidents WHERE guild_id = ? ORDER BY id DESC LIMIT ?", (guild_id, limit))
+        rows = c.fetchall()
+        conn.close()
+        return [{"timestamp": row[0], "event_type": row[1], "description": row[2]} for row in rows]
+    except Exception as e:
+        print(f"Error getting recent incidents: {e}")
+        return []
+
+def apply_security_preset(guild_id: int, preset: str) -> dict:
+    """
+    Apply a one-click security posture preset profile:
+    - 'balanced': Standard high-security defense for everyday community peace.
+    - 'fortress': Strict heightened posture (enforce permissions, invite blocking, 7-day account age).
+    - 'under_attack': Maximum lockdown and emergency isolation mode.
+    """
+    preset = preset.lower()
+    presets = {
+        "balanced": {
+            "anti_nuke": 1, "anti_bot_add": 1, "anti_mass_action": 1, "anti_server_hijack": 1,
+            "auto_panic_escalation": 1, "global_panic": 0, "anti_vpn": 1, "malware_filter": 1,
+            "phishing_api": 1, "suspect_scan": 1, "anti_mention": 1, "ghost_ping_guard": 1,
+            "voice_anti_raid": 1, "enforce_permissions": 1, "anti_dox": 1, "self_bot": 1,
+            "webhook_guard": 1, "anti_zalgo": 1, "anti_unban_guard": 1, "anti_impersonation": 1,
+            "raid_fingerprint": 1, "dm_owner_alert": 1, "min_account_age_days": 3
+        },
+        "fortress": {
+            "anti_nuke": 1, "anti_bot_add": 1, "anti_mass_action": 1, "anti_server_hijack": 1,
+            "auto_panic_escalation": 1, "global_panic": 0, "anti_vpn": 1, "malware_filter": 1,
+            "phishing_api": 1, "suspect_scan": 1, "anti_mention": 1, "ghost_ping_guard": 1,
+            "voice_anti_raid": 1, "enforce_permissions": 1, "anti_dox": 1, "self_bot": 1,
+            "webhook_guard": 1, "anti_zalgo": 1, "anti_unban_guard": 1, "anti_impersonation": 1,
+            "raid_fingerprint": 1, "dm_owner_alert": 1, "anti_invite": 1, "min_account_age_days": 7
+        },
+        "under_attack": {
+            "anti_nuke": 1, "anti_bot_add": 1, "anti_mass_action": 1, "anti_server_hijack": 1,
+            "auto_panic_escalation": 1, "global_panic": 1, "anti_vpn": 1, "malware_filter": 1,
+            "phishing_api": 1, "suspect_scan": 1, "anti_mention": 1, "ghost_ping_guard": 1,
+            "voice_anti_raid": 1, "enforce_permissions": 1, "anti_dox": 1, "self_bot": 1,
+            "webhook_guard": 1, "anti_zalgo": 1, "anti_unban_guard": 1, "anti_impersonation": 1,
+            "raid_fingerprint": 1, "dm_owner_alert": 1, "anti_invite": 1, "min_account_age_days": 14
+        }
+    }
+
+    if preset not in presets:
+        raise ValueError(f"Unknown preset: {preset}")
+
+    settings = presets[preset]
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO guild_config (guild_id) VALUES (?)", (guild_id,))
+    set_clauses = [f"{k} = ?" for k in settings.keys()]
+    values = list(settings.values()) + [guild_id]
+    c.execute(f"UPDATE guild_config SET {', '.join(set_clauses)} WHERE guild_id = ?", values)
+    conn.commit()
+    conn.close()
+
+    # Invalidate cache
+    if guild_id in config_cache:
+        del config_cache[guild_id]
+    new_conf = get_config(guild_id)
+    log_security_incident(guild_id, "PRESET_APPLIED", f"Activated security posture: {preset.upper()}")
+    return new_conf
 
 class DatabaseCog(commands.Cog):
     def __init__(self, bot):

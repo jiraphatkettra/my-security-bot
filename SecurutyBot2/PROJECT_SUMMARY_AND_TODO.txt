@@ -64,6 +64,14 @@
     - ป้องกันปัญหา OOM (Out Of Memory) บน Render Free/Starter 512MB แม้โดนยิงบอทถล่มเป็นหมื่นข้อความ
     - ปรับปรุงการตอบสนอง Discord Interaction ป้องกัน Timeout เมื่อมี Network Latency บน Render
 
+[10] นวัตกรรม Global Enterprise SOC UI & Telemetry (ระดับโลก 2026)
+    - Live SOC Telemetry & Micro-Graphs: แสดง Security Readiness Meter ASCII แบบสด, แสดงปริมาณการใช้ RAM ของโปรเซสจริง (psutil) เทียบกับโควตา Render 512MB, แสดง Gateway Latency
+    - Terminal Incident Live Feed: หน้าต่างแสดงประวัติภัยคุกคามที่ถูกสกัดกั้นล่าสุด 3 รายการแบบ CLI/Terminal Code Block
+    - One-Click Security Posture Profiles: ปุ่มปรับระดับความปลอดภัยด่วน 3 โหมด (Balanced Mode / Fortress Mode / Under Attack Mode) ปรับแต่ง 20+ ค่าความปลอดภัยในคลิกเดียว
+    - Rich Navigation SelectMenu: เมนู Dropdown แบบพรีเมียม เลือกสลับไปยัง 6 หมวดหมู่ย่อยได้ในบรรทัดเดียว
+    - Hierarchical Breadcrumbs: เส้นทางเมนูระดับ Enterprise เช่น `Security Core › Overview › Live SOC` ทุกหน้า
+    - Enterprise SOC v2.8 Global Footer: ฟุตเตอร์แสดงสถานะเกตเวย์และมาตรฐานความปลอดภัย Zero-Trust
+
 -------------------------------------------------------------------------------
 3. แผนการพัฒนาในอนาคต (FUTURE ROADMAP & TODO)
 -------------------------------------------------------------------------------
