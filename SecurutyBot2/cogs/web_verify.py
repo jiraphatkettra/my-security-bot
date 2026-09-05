@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 import hmac
 import hashlib
@@ -8,6 +9,10 @@ import aiohttp
 import discord
 from discord.ext import commands
 from aiohttp import web
+
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    try: sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except: pass
 
 from cogs.database import (
     get_config, add_ip_log, check_user_ip_banned, ban_ip, send_audit_log
@@ -347,11 +352,22 @@ CAPTCHA_HTML_TEMPLATE = """<!DOCTYPE html>
 </html>
 """
 
+def get_web_state():
+    if not hasattr(sys, "_security_bot_web_state"):
+        sys._security_bot_web_state = {
+            "server_started": False,
+            "runner": None,
+            "site": None,
+            "app": None
+        }
+    return sys._security_bot_web_state
+
 class WebVerifyCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.site = None
-        self.runner = None
+        state = get_web_state()
+        self.site = state["site"]
+        self.runner = state["runner"]
 
     async def handle_root(self, request):
         """เส้นทางสำหรับ Render Health Check (ต้องตอบ 200 เพื่อให้ Deploy ผ่าน 100%)"""
@@ -359,29 +375,27 @@ class WebVerifyCog(commands.Cog):
 
     async def handle_health(self, request):
         """เส้นทางสำหรับ UptimeRobot ตรวจสุขภาพบอท"""
-        status_text = "Gateway Connected" if (self.bot.is_ready() and not self.bot.is_closed()) else "Gateway Connecting"
+        bot = request.app.get('bot', self.bot) if hasattr(request, 'app') else self.bot
+        status_text = "Gateway Connected" if (bot and bot.is_ready() and not bot.is_closed()) else "Gateway Connecting"
         return web.Response(text=f"OK - Enterprise Security Bot ({status_text})", status=200)
 
     async def cog_load(self):
-        app = web.Application()
-        app.router.add_get('/', self.handle_root)
-        app.router.add_get('/health', self.handle_health)
-        app.router.add_get('/verify', self.handle_verify)
-        app.router.add_get('/success.html', self.handle_verify)
-        self.runner = web.AppRunner(app)
-        await self.runner.setup()
-        self.site = web.TCPSite(self.runner, '0.0.0.0', PORT)
+        state = get_web_state()
+        if state["server_started"]:
+            if state["app"]:
+                state["app"]['bot'] = self.bot
+            return
+
         try:
-            await self.site.start()
-            print(f"🌐 Web Verification Server is live on http://0.0.0.0:{PORT}")
+            runner, site = await start_web_server(self.bot, PORT)
+            self.runner = runner
+            self.site = site
         except Exception as e:
             print(f"⚠️ Web Verify Server Error: {e}")
 
     async def cog_unload(self):
-        if self.site:
-            await self.site.stop()
-        if self.runner:
-            await self.runner.cleanup()
+        # Keep web server alive during cog reload or client reconnects
+        pass
 
     async def handle_verify(self, request):
         guild_id_str = request.query.get("guild_id")
@@ -466,7 +480,8 @@ class WebVerifyCog(commands.Cog):
         handle_name = handle_query or f"user_{user_id}"
         avatar_url = avatar_query or "https://cdn.discordapp.com/embed/avatars/0.png"
 
-        guild = self.bot.get_guild(guild_id)
+        bot = request.app.get('bot', self.bot) if hasattr(request, 'app') else self.bot
+        guild = bot.get_guild(guild_id) if bot else None
         if guild:
             member = guild.get_member(user_id)
             if not member:
@@ -504,6 +519,42 @@ class WebVerifyCog(commands.Cog):
             .replace("{username}", handle_name)
         )
         return web.Response(text=html_content, content_type='text/html')
+
+async def start_web_server(bot=None, port=None):
+    state = get_web_state()
+    if state["server_started"] and state["site"] is not None:
+        if bot and state["app"]:
+            state["app"]['bot'] = bot
+        return state["runner"], state["site"]
+
+    target_port = port or PORT
+    cog = WebVerifyCog(bot)
+    app = web.Application()
+    app['bot'] = bot
+    app['cog'] = cog
+
+    app.router.add_get('/', cog.handle_root)
+    app.router.add_get('/health', cog.handle_health)
+    app.router.add_get('/verify', cog.handle_verify)
+    app.router.add_get('/success.html', cog.handle_verify)
+
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', target_port)
+    await site.start()
+
+    state["runner"] = runner
+    state["site"] = site
+    state["app"] = app
+    state["server_started"] = True
+
+    print(f"🌐 [Render Web Service] Live on http://0.0.0.0:{target_port} (Health Check: 200 OK)")
+    return runner, site
+
+def update_web_bot(bot):
+    state = get_web_state()
+    if state["app"]:
+        state["app"]['bot'] = bot
 
 async def setup(bot):
     await bot.add_cog(WebVerifyCog(bot))

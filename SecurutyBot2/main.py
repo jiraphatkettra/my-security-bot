@@ -1,8 +1,17 @@
 import os
+import sys
 import asyncio
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+
+# ป้องกัน UnicodeEncodeError เมื่อรันบน Windows (CMD / PowerShell)
+if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
+    try: sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    except: pass
+if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
+    try: sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except: pass
 
 # ==========================================
 # 1. โหลดค่า ENVIRONMENT & ตั้งค่า INTENTS
@@ -72,6 +81,8 @@ def create_bot():
 
     return b
 
+from cogs.web_verify import start_web_server, update_web_bot, PORT
+
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN and os.path.exists(".env"):
     try:
@@ -87,18 +98,34 @@ async def main():
         print("❌ ไม่พบ DISCORD_TOKEN ในระบบ กรุณาตรวจสอบ .env หรือ Environment Variable")
         return
 
+    # 1. รัน Web Server ทันที เพื่อให้ Render Health Check ผ่าน 100% ภายใน 5 วินาทีแรก (แก้ปัญหา Deploy Timed Out)
+    print("🌐 Initializing Web Service for Render Deployment...")
+    try:
+        await start_web_server(None, PORT)
+    except Exception as e:
+        print(f"⚠️ Web Server Startup Notice: {e}")
+
+    # 2. เริ่มต้นเชื่อมต่อบอทพร้อมระบบ Smart Auto-Reconnect & 429 Rate Limit Handler
     print("🚀 Starting Enterprise Security Bot (High-Availability Gateway Defense)...")
-    retry_delay = 60
+    retry_delay = 30
     while True:
         b = create_bot()
+        update_web_bot(b)
         try:
             async with b:
                 await b.start(TOKEN, reconnect=True)
             break
         except discord.errors.HTTPException as e:
             if e.status == 429:
-                print(f"🚨 [Discord 429 Rate Limit] IP บน Render โดน Discord บล็อกชั่วคราว - รอ {retry_delay} วินาทีเพื่อคลายบล็อก...")
+                print(f"🚨 [Discord 429 Rate Limit] IP บน Render โดน Discord บล็อกชั่วคราว (Shared IP Pool Exceeded)")
+                print(f"💡 คำแนะนำในการแก้ปัญหา:")
+                print(f"   1. บน Render: แนะนำเปลี่ยน Region ใน Render Settings (เช่น Oregon -> Frankfurt หรือ Singapore)")
+                print(f"   2. หรือรันบน Discloud / Square Cloud (discloud.config มีพร้อมแล้ว ไม่ติดบล็อก 429 แน่นอน)")
+                print(f"   3. หรือรันบนเครื่องตัวเองผ่าน start.bat (เปิดใช้งานได้ทันที 100%)")
+                print(f"🌐 [Status] Render Web Server ยังคงทำงานปกติ (Health Check ตอบ 200 OK Deploy จะไม่ติด Timed Out)")
+                print(f"⏳ กำลังรอ {retry_delay} วินาทีเพื่อลองเชื่อมต่อใหม่อีกครั้ง...")
                 await asyncio.sleep(retry_delay)
+                retry_delay = min(retry_delay + 30, 300)
             else:
                 print(f"⚠️ Discord HTTP Error: {e} - กำลังลองใหม่ใน 15 วินาที...")
                 await asyncio.sleep(15)
