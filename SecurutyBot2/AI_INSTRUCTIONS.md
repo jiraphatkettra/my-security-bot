@@ -47,7 +47,7 @@ d:\BOTBANG\SecurutyBot - Copy\SecurutyBot2\
 ไฟล์ `cogs/database.py` จัดการ SQLite ทั้งหมด โดยมีตารางหลักดังนี้:
 
 1. **`guild_config`**: ตั้งค่าความปลอดภัยของแต่ละกิลด์
-   - `guild_id` (PRIMARY KEY), `log_channel_id`, `verify_channel_id`, `verify_role_id`, `quarantine_role_id`, `honeypot_channel_id`, `min_account_age_days`, `owner_pin`
+   - `guild_id` (PRIMARY KEY), `log_channel_id`, `verify_channel_id`, `verify_role_id`, `quarantine_role_id`, `honeypot_channel_id`, `min_account_age_days`, `owner_pin`, `verify_domain`, `language` ('th'/'en')
    - **Toggles (0/1):** `malware_filter`, `ai_filter`, `phishing_api`, `anti_dox`, `anti_nuke`, `anti_mention`, `strike_system`, `voice_anti_raid`, `auto_purge`, `enforce_permissions`, `ip_ban_guard`, `anti_vpn`, `global_panic`, `ghost_ping_guard`, `anti_invite`, `webhook_guard`, `suspect_scan`, `anti_bot_add`, `anti_mass_action`, `anti_server_hijack`, `auto_panic_escalation`, `anti_zalgo`, `anti_unban_guard`, `anti_impersonation`, `raid_fingerprint`, `dm_owner_alert`
 2. **`whitelist`**: สมาชิกหรือยศที่ได้รับการยกเว้นจากการตรวจสอบ (`guild_id`, `target_id`, `target_name`)
 3. **`warnings`**: บันทึกประวัติการเตือน (`guild_id`, `user_id`, `reason`, `timestamp`)

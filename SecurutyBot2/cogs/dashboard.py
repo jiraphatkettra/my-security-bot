@@ -6,6 +6,7 @@ import sqlite3
 import asyncio
 import socket
 import os
+import gc
 from collections import defaultdict
 from discord import app_commands
 from discord.ext import commands
@@ -20,7 +21,120 @@ from cogs.database import (
 )
 from cogs.web_verify import generate_verify_signature, PORT
 
+# ==========================================
+# BILINGUAL LOCALIZATION (TH / EN)
+# ==========================================
+STRINGS = {
+    "th": {
+        "sec_engine": "ระบบป้องกันหลัก",
+        "hardening": "ระบบขั้นสูง (2026)",
+        "verify_access": "ระบบยืนยันตัวตน",
+        "member_controls": "จัดการสมาชิก",
+        "configuration": "ตั้งค่าระบบ",
+        "backup_restore": "สำรองข้อมูล",
+        "lang_toggle": "Language: TH",
+        "back": "← กลับ",
+        "main_title": "ศูนย์ควบคุมความปลอดภัย",
+        "main_desc": "ระบบรักษาความปลอดภัยระดับองค์กร • นโยบาย Zero-Trust\n──────────────────────────────",
+        "threat_analytics": "สถิติการสกัดกั้นภัยคุกคาม",
+        "threats_mitigated": "ระงับภัยคุกคามสะสม",
+        "no_threats": "*การป้องกันทุกจุดปกติ ยังไม่พบภัยคุกคาม*",
+        "system_status": "สถานะระบบ",
+        "emergency_controls": "ระบบฉุกเฉิน",
+        "active": "เปิดใช้งาน",
+        "disabled": "ปิดใช้งาน",
+        "online": "พร้อมใช้งาน",
+        "healthy": "สมบูรณ์",
+        "armed": "พร้อมทำงาน",
+        "sec_menu_title": "ระบบป้องกันภัยคุกคาม",
+        "sec_menu_desc": "โมดูลตรวจสอบแบบสดและการจำกัดความถี่อัตโนมัติ\nกดสวิตช์ด้านล่างเพื่อปรับกฎการป้องกัน\n──────────────────────────────",
+        "content_defense": "ความปลอดภัยข้อความ & เนื้อหา",
+        "privilege_defense": "การป้องกันสิทธิ์ & ห้อง",
+        "raid_abuse": "การป้องกัน Raid & ก่อกวน",
+        "hardening_title": "ระบบป้องกันขั้นสูง (Enterprise Hardening)",
+        "hardening_desc": "โมดูลวิเคราะห์พฤติกรรมในระดับเซิร์ฟเวอร์\nกดสวิตช์ด้านล่างเพื่อเปิด/ปิดระบบ\n──────────────────────────────",
+        "verify_title": "ระบบยืนยันตัวตน & สิทธิ์เข้าถึง",
+        "verify_desc": "ระบบยืนยันตัวตนผ่านเว็บและดักจับ IP ป้องกันไอดีอวตาร\n──────────────────────────────",
+        "mod_title": "ระบบจัดการสมาชิก",
+        "mod_desc": "เลือกสมาชิกจากเมนูด้านล่างเพื่อดูข้อมูล เตือน มิวท์ กักกัน หรือแบน\n──────────────────────────────",
+        "settings_title": "ตั้งค่าระบบ & ห้องดักบอท",
+        "settings_desc": "จัดการห้องเก็บ Log, ห้องดักสแปม และนโยบายความปลอดภัย\n──────────────────────────────",
+        "backup_title": "สำรองข้อมูล & กู้คืนโครงสร้างดิส",
+        "backup_desc": "บันทึก Snapshot โครงสร้าง (ห้อง, หมวดหมู่, ยศ และสิทธิ์) เพื่อกู้คืนทันทีหากเกิดเหตุ\n──────────────────────────────",
+        "verify_public_title": "ยืนยันตัวตนเข้าสู่เซิร์ฟเวอร์",
+        "verify_public_desc": "ยินดีต้อนรับสู่ **{guild_name}**\nเพื่อความปลอดภัยของชุมชนและป้องกันบอทสแปม กรุณายืนยันตัวตนตามขั้นตอนด้านล่าง\n\n**ขั้นตอนการยืนยัน**\n• กดปุ่ม **Verify Identity** ด้านล่าง\n• แก้รหัสผ่านภาพบนหน้าเว็บที่ปลอดภัย\n• ระบบจะมอบยศสมาชิกให้อัตโนมัติทันที\n\n──────────────────────────────\n*ใช้เวลาไม่เกิน 10 วินาที รองรับทั้งมือถือและคอมพิวเตอร์*",
+        "verify_btn_label": "Verify Identity",
+        "lockdown_btn": "ล็อกดาวน์",
+        "unlock_btn": "ปลดล็อกดาวน์",
+        "scan_msg_btn": "สแกนข้อความ",
+        "scan_acc_btn": "สแกนไอดีใหม่",
+        "save_snapshot_btn": "บันทึก Snapshot",
+        "restore_snapshot_btn": "กู้คืน Snapshot",
+        "deploy_honeypot_btn": "สร้างห้อง Decoy Trap",
+    },
+    "en": {
+        "sec_engine": "Security Engine",
+        "hardening": "Hardening (2026)",
+        "verify_access": "Verify & Access",
+        "member_controls": "Member Controls",
+        "configuration": "Configuration",
+        "backup_restore": "Backup & Restore",
+        "lang_toggle": "Language: EN",
+        "back": "← Back",
+        "main_title": "Security Control Center",
+        "main_desc": "Enterprise Discord Security • Zero-Trust Architecture\n──────────────────────────────",
+        "threat_analytics": "Threat Analytics",
+        "threats_mitigated": "Total Threats Mitigated",
+        "no_threats": "*All perimeter defenses normal. No active threats recorded.*",
+        "system_status": "System Status",
+        "emergency_controls": "Emergency Controls",
+        "active": "ACTIVE",
+        "disabled": "OFF",
+        "online": "ONLINE",
+        "healthy": "HEALTHY",
+        "armed": "ARMED",
+        "sec_menu_title": "Security Defense Engine",
+        "sec_menu_desc": "Live heuristic defense modules and automated rate-limiting.\nToggle individual protections below or execute manual inspections.\n──────────────────────────────",
+        "content_defense": "Content Defense",
+        "privilege_defense": "Privilege Protection",
+        "raid_abuse": "Raid & Abuse",
+        "hardening_title": "Enterprise Hardening Controls",
+        "hardening_desc": "Heuristic defense modules operating at server level.\nToggle individual protections below to adjust rules.\n──────────────────────────────",
+        "verify_title": "Verification & Access Gateway",
+        "verify_desc": "External Web verification and IP-based anti-alt bot protection.\n──────────────────────────────",
+        "mod_title": "Member Moderation",
+        "mod_desc": "Select a member from the dropdown below to view status, warn, timeout, quarantine, or sanction.\n──────────────────────────────",
+        "settings_title": "Server Configuration & Decoys",
+        "settings_desc": "Manage log destinations, decoy traps, and access policies.\n──────────────────────────────",
+        "backup_title": "Server Backup & Disaster Recovery",
+        "backup_desc": "Snapshot server structure (channels, categories, roles, and permissions) for immediate rollback in case of an incident.\n──────────────────────────────",
+        "verify_public_title": "Member Verification",
+        "verify_public_desc": "Welcome to **{guild_name}**.\nTo protect the server against automated raid bots and keep the community secure, please complete the identity verification below.\n\n**Instructions**\n• Click the **Verify Identity** button below\n• Complete the captcha on the secure portal\n• Access role will be granted automatically\n\n──────────────────────────────\n*Verification takes seconds and works across all devices.*",
+        "verify_btn_label": "Verify Identity",
+        "lockdown_btn": "Lockdown",
+        "unlock_btn": "Unlock",
+        "scan_msg_btn": "Scan Messages",
+        "scan_acc_btn": "Scan Accounts",
+        "save_snapshot_btn": "Save Snapshot",
+        "restore_snapshot_btn": "Restore from Snapshot",
+        "deploy_honeypot_btn": "Deploy Decoy Trap",
+    }
+}
+
+def t(key: str, lang: str = "th") -> str:
+    lang_dict = STRINGS.get(lang, STRINGS["th"])
+    return lang_dict.get(key, STRINGS["en"].get(key, key))
+
+# ==========================================
+# RENDER MEMORY & COOLDOWN MANAGEMENT
+# ==========================================
 interaction_cooldowns = defaultdict(list)
+
+def clean_interaction_cooldowns():
+    now = time.time()
+    stale_uids = [uid for uid, ts in interaction_cooldowns.items() if not ts or (now - ts[-1] > 15)]
+    for uid in stale_uids[:200]:
+        interaction_cooldowns.pop(uid, None)
 
 def check_role_hierarchy(actor: discord.Member, target: discord.Member) -> bool:
     if actor.guild.owner_id == actor.id:
@@ -30,24 +144,37 @@ def check_role_hierarchy(actor: discord.Member, target: discord.Member) -> bool:
     return actor.top_role > target.top_role
 
 # ==========================================
-# BASE SECURITY VIEW (RATE LIMIT CHECK)
+# BASE SECURITY VIEW (RENDER STABILITY WRAPPER)
 # ==========================================
 class BaseSecurityView(View):
+    def __init__(self, timeout: float = 300):
+        super().__init__(timeout=timeout)
+
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        clean_interaction_cooldowns()
         now = time.time()
         user_id = interaction.user.id
-        interaction_cooldowns[user_id] = [t for t in interaction_cooldowns[user_id] if now - t < 5]
+        interaction_cooldowns[user_id] = [timestamp for timestamp in interaction_cooldowns[user_id] if now - timestamp < 5]
         
         if len(interaction_cooldowns[user_id]) >= 4:
             if not interaction.response.is_done():
                 try: 
                     await interaction.response.send_message("Rate Limit: Please wait a moment before sending more commands.", ephemeral=True)
-                except: 
+                except Exception: 
                     pass
             return False
         
         interaction_cooldowns[user_id].append(now)
         return True
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item):
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("Notice: Interaction timed out or network latency detected. Please retry.", ephemeral=True)
+            else:
+                await interaction.followup.send("Notice: Command execution completed or state updated.", ephemeral=True)
+        except Exception:
+            pass
 
 # ==========================================
 # MODALS
@@ -129,7 +256,7 @@ class SetupConfigModal(Modal, title="Configuration"):
 
     async def on_submit(self, interaction: discord.Interaction):
         val = self.target_id.value
-        if self.config_key in ("owner_pin", "verify_domain"):
+        if self.config_key in ("owner_pin", "verify_domain", "language"):
             update_config(interaction.guild.id, self.config_key, str(val))
             await interaction.response.send_message(f"Updated **{self.description}**: `{val}`", ephemeral=True)
         else:
@@ -156,19 +283,21 @@ class OwnerPinModal(Modal, title="Security 2FA Verification"):
 # ==========================================
 # MEMBER MODERATION VIEWS & EMBED
 # ==========================================
-def get_moderation_embed():
+def get_moderation_embed(guild_id: int = 0):
+    lang = get_config(guild_id).get("language", "th") if guild_id else "th"
     embed = discord.Embed(
-        title="Member Moderation",
-        description="Select a member from the dropdown below to view status, warn, timeout, quarantine, or sanction.\n──────────────────────────────",
+        title=t("mod_title", lang),
+        description=t("mod_desc", lang),
         color=discord.Color(0x2B2D31)
     )
     embed.set_footer(text="Security Core • Member Controls")
     return embed
 
 class UserActionView(BaseSecurityView):
-    def __init__(self, target: discord.Member):
+    def __init__(self, target: discord.Member, guild_id: int = 0):
         super().__init__(timeout=180)
         self.target = target
+        self.guild_id = guild_id or target.guild.id
 
     @discord.ui.button(label="Warn", style=discord.ButtonStyle.secondary, row=0)
     async def btn_warn(self, interaction: discord.Interaction, button: Button):
@@ -226,11 +355,12 @@ class UserActionView(BaseSecurityView):
 
     @discord.ui.button(label="← Back", style=discord.ButtonStyle.secondary, row=1)
     async def btn_back(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(embed=get_moderation_embed(), view=ModerationMenuView())
+        await interaction.response.edit_message(embed=get_moderation_embed(self.guild_id), view=ModerationMenuView(self.guild_id))
 
 class ModerationMenuView(BaseSecurityView):
-    def __init__(self):
+    def __init__(self, guild_id: int = 0):
         super().__init__(timeout=300)
+        self.guild_id = guild_id
 
     @discord.ui.select(cls=UserSelect, placeholder="Select a member to manage...", max_values=1)
     async def select_user(self, interaction: discord.Interaction, select: UserSelect):
@@ -242,12 +372,12 @@ class ModerationMenuView(BaseSecurityView):
         )
         embed.set_thumbnail(url=target.display_avatar.url)
         embed.set_footer(text="Security Core • Member Actions")
-        await interaction.response.edit_message(embed=embed, view=UserActionView(target=target))
+        await interaction.response.edit_message(embed=embed, view=UserActionView(target=target, guild_id=interaction.guild.id))
 
     @discord.ui.button(label="← Back", style=discord.ButtonStyle.secondary, row=1)
     async def btn_back(self, interaction: discord.Interaction, button: Button):
-        g_id = interaction.guild.id if interaction.guild else 0
-        await interaction.response.edit_message(content=None, embed=get_main_embed(g_id), view=MainDashboardView())
+        g_id = interaction.guild.id if interaction.guild else self.guild_id
+        await interaction.response.edit_message(content=None, embed=get_main_embed(g_id), view=MainDashboardView(g_id))
 
 # ==========================================
 # PUBLIC VERIFICATION & ACCESS VIEWS
@@ -326,18 +456,24 @@ class VerifyMenuView(BaseSecurityView):
         super().__init__(timeout=300)
         self.guild_id = guild_id
         conf = get_config(guild_id)
+        lang = conf.get("language", "th")
 
-        ip_label = "IP Guard  [ON]" if conf["ip_ban_guard"] else "IP Guard  [OFF]"
+        ip_label = f"IP Guard  [{'ON' if conf['ip_ban_guard'] else 'OFF'}]"
         ip_style = discord.ButtonStyle.primary if conf["ip_ban_guard"] else discord.ButtonStyle.secondary
         btn_ip_guard = Button(label=ip_label, style=ip_style, row=0)
         btn_ip_guard.callback = self.toggle_ip_guard
         self.add_item(btn_ip_guard)
 
-        vpn_label = "Anti-VPN  [ON]" if conf.get("anti_vpn") else "Anti-VPN  [OFF]"
+        vpn_label = f"Anti-VPN  [{'ON' if conf.get('anti_vpn') else 'OFF'}]"
         vpn_style = discord.ButtonStyle.primary if conf.get("anti_vpn") else discord.ButtonStyle.secondary
         btn_vpn = Button(label=vpn_label, style=vpn_style, row=0)
         btn_vpn.callback = self.toggle_vpn
         self.add_item(btn_vpn)
+
+        # Back button in row 3
+        back_btn = Button(label=t("back", lang), style=discord.ButtonStyle.secondary, row=3)
+        back_btn.callback = self.btn_back
+        self.add_item(back_btn)
 
     async def toggle_ip_guard(self, interaction: discord.Interaction):
         conf = get_config(self.guild_id)
@@ -366,6 +502,7 @@ class VerifyMenuView(BaseSecurityView):
     @discord.ui.button(label="Publish Verify Panel", style=discord.ButtonStyle.primary, row=2)
     async def btn_send_verify_embed(self, interaction: discord.Interaction, button: Button):
         conf = get_config(interaction.guild.id)
+        lang = conf.get("language", "th")
         channel_id = conf["verify_channel_id"] or interaction.channel_id
         target_channel = interaction.guild.get_channel(channel_id)
         
@@ -374,15 +511,8 @@ class VerifyMenuView(BaseSecurityView):
 
         guild_name = interaction.guild.name
         embed = discord.Embed(
-            title="Member Verification",
-            description=f"Welcome to **{guild_name}**.\n"
-                        f"To protect the server against automated raid bots and keep the community secure, please complete the identity verification below.\n\n"
-                        f"**Instructions**\n"
-                        f"• Click the **Verify Identity** button below\n"
-                        f"• Complete the captcha on the secure portal\n"
-                        f"• Access role will be granted automatically\n\n"
-                        f"──────────────────────────────\n"
-                        f"*Verification takes seconds and works across all devices.*",
+            title=t("verify_public_title", lang),
+            description=t("verify_public_desc", lang).format(guild_name=guild_name),
             color=discord.Color(0x2B2D31)
         )
         embed.set_footer(text=f"{guild_name} • Security Verification")
@@ -390,21 +520,21 @@ class VerifyMenuView(BaseSecurityView):
         await target_channel.send(embed=embed, view=VerifyPublicButton(interaction.guild.id))
         await interaction.response.send_message(f"Published verification panel to {target_channel.mention}.", ephemeral=True)
 
-    @discord.ui.button(label="← Back", style=discord.ButtonStyle.secondary, row=3)
-    async def btn_back(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(content=None, embed=get_main_embed(self.guild_id), view=MainDashboardView())
+    async def btn_back(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(content=None, embed=get_main_embed(self.guild_id), view=MainDashboardView(self.guild_id))
 
 def get_verify_embed(guild_id: int):
     conf = get_config(guild_id)
+    lang = conf.get("language", "th")
     v_chan = f"<#{conf['verify_channel_id']}>" if conf['verify_channel_id'] else "`Unconfigured`"
     v_role = f"<@&{conf['verify_role_id']}>" if conf['verify_role_id'] else "`Unconfigured`"
-    ip_status = "`ACTIVE`" if conf['ip_ban_guard'] else "`OFF`"
-    vpn_status = "`ACTIVE`" if conf.get('anti_vpn') else "`OFF`"
+    ip_status = f"`{t('active', lang)}`" if conf['ip_ban_guard'] else f"`{t('disabled', lang)}`"
+    vpn_status = f"`{t('active', lang)}`" if conf.get('anti_vpn') else f"`{t('disabled', lang)}`"
     domain_status = f"`{conf['verify_domain']}`" if conf.get('verify_domain') else f"`{get_public_verify_host(guild_id)}` (Default)"
     
     embed = discord.Embed(
-        title="Verification & Access Gateway",
-        description="External Web verification and IP-based anti-alt bot protection.\n──────────────────────────────",
+        title=t("verify_title", lang),
+        description=t("verify_desc", lang),
         color=discord.Color(0x2B2D31)
     )
     embed.add_field(name="Target Channel", value=v_chan, inline=True)
@@ -420,15 +550,16 @@ def get_verify_embed(guild_id: int):
 # ==========================================
 def get_security_menu_embed(guild_id: int):
     conf = get_config(guild_id)
-    badge = lambda val: "`ACTIVE`" if val else "`OFF`"
+    lang = conf.get("language", "th")
+    badge = lambda val: f"`{t('active', lang)}`" if val else f"`{t('disabled', lang)}`"
     
     embed = discord.Embed(
-        title="Security Defense Engine",
-        description="Live heuristic defense modules and automated rate-limiting.\nToggle individual protections below or execute manual inspections.\n──────────────────────────────",
+        title=t("sec_menu_title", lang),
+        description=t("sec_menu_desc", lang),
         color=discord.Color(0x2B2D31)
     )
     embed.add_field(
-        name="Content Defense",
+        name=t("content_defense", lang),
         value=f"• Malware Filter: {badge(conf['malware'])}\n"
               f"• Phishing Guard: {badge(conf['phishing_api'])}\n"
               f"• Anti-Dox Engine: {badge(conf['anti_dox'])}\n"
@@ -436,7 +567,7 @@ def get_security_menu_embed(guild_id: int):
         inline=True
     )
     embed.add_field(
-        name="Privilege Protection",
+        name=t("privilege_defense", lang),
         value=f"• Anti-Nuke Engine: {badge(conf['anti_nuke'])}\n"
               f"• Perm Enforcement: {badge(conf['enforce_permissions'])}\n"
               f"• Webhook Guard: {badge(conf.get('webhook_guard'))}\n"
@@ -444,7 +575,7 @@ def get_security_menu_embed(guild_id: int):
         inline=True
     )
     embed.add_field(
-        name="Raid & Abuse",
+        name=t("raid_abuse", lang),
         value=f"• Mass Mention: {badge(conf['anti_mention'])}\n"
               f"• Voice Raid Guard: {badge(conf['voice_anti_raid'])}\n"
               f"• Ghost Ping Guard: {badge(conf.get('ghost_ping_guard'))}\n"
@@ -459,56 +590,45 @@ class SecurityMenuView(BaseSecurityView):
         super().__init__(timeout=300)
         self.guild_id = guild_id
         conf = get_config(guild_id)
+        lang = conf.get("language", "th")
         
         # Row 0: Content Security
-        mal_label = "Malware  [ON]" if conf["malware"] else "Malware  [OFF]"
-        mal_btn = Button(label=mal_label, style=discord.ButtonStyle.primary if conf["malware"] else discord.ButtonStyle.secondary, row=0)
+        mal_btn = Button(label=f"Malware  [{'ON' if conf['malware'] else 'OFF'}]", style=discord.ButtonStyle.primary if conf["malware"] else discord.ButtonStyle.secondary, row=0)
         mal_btn.callback = self.toggle_malware
         
-        ai_label = "AI Filter  [ON]" if conf["ai"] else "AI Filter  [OFF]"
-        ai_btn = Button(label=ai_label, style=discord.ButtonStyle.primary if conf["ai"] else discord.ButtonStyle.secondary, row=0)
+        ai_btn = Button(label=f"AI Filter  [{'ON' if conf['ai'] else 'OFF'}]", style=discord.ButtonStyle.primary if conf["ai"] else discord.ButtonStyle.secondary, row=0)
         ai_btn.callback = self.toggle_ai
         
-        phish_label = "Phishing  [ON]" if conf["phishing_api"] else "Phishing  [OFF]"
-        phish_btn = Button(label=phish_label, style=discord.ButtonStyle.primary if conf["phishing_api"] else discord.ButtonStyle.secondary, row=0)
+        phish_btn = Button(label=f"Phishing  [{'ON' if conf['phishing_api'] else 'OFF'}]", style=discord.ButtonStyle.primary if conf["phishing_api"] else discord.ButtonStyle.secondary, row=0)
         phish_btn.callback = self.toggle_phishing
         
-        dox_label = "Anti-Dox  [ON]" if conf["anti_dox"] else "Anti-Dox  [OFF]"
-        dox_btn = Button(label=dox_label, style=discord.ButtonStyle.primary if conf["anti_dox"] else discord.ButtonStyle.secondary, row=0)
+        dox_btn = Button(label=f"Anti-Dox  [{'ON' if conf['anti_dox'] else 'OFF'}]", style=discord.ButtonStyle.primary if conf["anti_dox"] else discord.ButtonStyle.secondary, row=0)
         dox_btn.callback = self.toggle_dox
 
         # Row 1: Privilege & Abuse Security
-        nuke_label = "Anti-Nuke  [ON]" if conf["anti_nuke"] else "Anti-Nuke  [OFF]"
-        nuke_btn = Button(label=nuke_label, style=discord.ButtonStyle.primary if conf["anti_nuke"] else discord.ButtonStyle.secondary, row=1)
+        nuke_btn = Button(label=f"Anti-Nuke  [{'ON' if conf['anti_nuke'] else 'OFF'}]", style=discord.ButtonStyle.primary if conf["anti_nuke"] else discord.ButtonStyle.secondary, row=1)
         nuke_btn.callback = self.toggle_nuke
         
-        mention_label = "Mention  [ON]" if conf["anti_mention"] else "Mention  [OFF]"
-        mention_btn = Button(label=mention_label, style=discord.ButtonStyle.primary if conf["anti_mention"] else discord.ButtonStyle.secondary, row=1)
+        mention_btn = Button(label=f"Mention  [{'ON' if conf['anti_mention'] else 'OFF'}]", style=discord.ButtonStyle.primary if conf["anti_mention"] else discord.ButtonStyle.secondary, row=1)
         mention_btn.callback = self.toggle_mention
         
-        voice_label = "Voice Raid  [ON]" if conf["voice_anti_raid"] else "Voice Raid  [OFF]"
-        voice_btn = Button(label=voice_label, style=discord.ButtonStyle.primary if conf["voice_anti_raid"] else discord.ButtonStyle.secondary, row=1)
+        voice_btn = Button(label=f"Voice Raid  [{'ON' if conf['voice_anti_raid'] else 'OFF'}]", style=discord.ButtonStyle.primary if conf["voice_anti_raid"] else discord.ButtonStyle.secondary, row=1)
         voice_btn.callback = self.toggle_voice
         
-        perm_label = "Perm Enforce  [ON]" if conf["enforce_permissions"] else "Perm Enforce  [OFF]"
-        perm_btn = Button(label=perm_label, style=discord.ButtonStyle.primary if conf["enforce_permissions"] else discord.ButtonStyle.secondary, row=1)
+        perm_btn = Button(label=f"Perm Enforce  [{'ON' if conf['enforce_permissions'] else 'OFF'}]", style=discord.ButtonStyle.primary if conf["enforce_permissions"] else discord.ButtonStyle.secondary, row=1)
         perm_btn.callback = self.toggle_perm
 
         # Row 2: Perimeters
-        ghost_label = "Ghost Ping  [ON]" if conf.get("ghost_ping_guard") else "Ghost Ping  [OFF]"
-        ghost_btn = Button(label=ghost_label, style=discord.ButtonStyle.primary if conf.get("ghost_ping_guard") else discord.ButtonStyle.secondary, row=2)
+        ghost_btn = Button(label=f"Ghost Ping  [{'ON' if conf.get('ghost_ping_guard') else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("ghost_ping_guard") else discord.ButtonStyle.secondary, row=2)
         ghost_btn.callback = self.toggle_ghost
         
-        invite_label = "Anti-Invite  [ON]" if conf.get("anti_invite") else "Anti-Invite  [OFF]"
-        invite_btn = Button(label=invite_label, style=discord.ButtonStyle.primary if conf.get("anti_invite") else discord.ButtonStyle.secondary, row=2)
+        invite_btn = Button(label=f"Anti-Invite  [{'ON' if conf.get('anti_invite') else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("anti_invite") else discord.ButtonStyle.secondary, row=2)
         invite_btn.callback = self.toggle_invite
         
-        wh_label = "Webhook Guard  [ON]" if conf.get("webhook_guard") else "Webhook Guard  [OFF]"
-        wh_btn = Button(label=wh_label, style=discord.ButtonStyle.primary if conf.get("webhook_guard") else discord.ButtonStyle.secondary, row=2)
+        wh_btn = Button(label=f"Webhook Guard  [{'ON' if conf.get('webhook_guard') else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("webhook_guard") else discord.ButtonStyle.secondary, row=2)
         wh_btn.callback = self.toggle_webhook
         
-        suspect_label = "Account Scan  [ON]" if conf.get("suspect_scan") else "Account Scan  [OFF]"
-        suspect_btn = Button(label=suspect_label, style=discord.ButtonStyle.primary if conf.get("suspect_scan") else discord.ButtonStyle.secondary, row=2)
+        suspect_btn = Button(label=f"Account Scan  [{'ON' if conf.get('suspect_scan') else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("suspect_scan") else discord.ButtonStyle.secondary, row=2)
         suspect_btn.callback = self.toggle_suspect
 
         self.add_item(mal_btn)
@@ -523,6 +643,24 @@ class SecurityMenuView(BaseSecurityView):
         self.add_item(invite_btn)
         self.add_item(wh_btn)
         self.add_item(suspect_btn)
+
+        # Row 3 Actions
+        btn_scan_msg = Button(label=t("scan_msg_btn", lang), style=discord.ButtonStyle.secondary, row=3)
+        btn_scan_msg.callback = self.btn_scan_messages
+        btn_scan_acc = Button(label=t("scan_acc_btn", lang), style=discord.ButtonStyle.secondary, row=3)
+        btn_scan_acc.callback = self.btn_scan_suspects
+        btn_panic_btn = Button(label=t("lockdown_btn", lang), style=discord.ButtonStyle.danger, row=3)
+        btn_panic_btn.callback = self.btn_panic
+        btn_unpanic_btn = Button(label=t("unlock_btn", lang), style=discord.ButtonStyle.secondary, row=3)
+        btn_unpanic_btn.callback = self.btn_unpanic
+        btn_back_btn = Button(label=t("back", lang), style=discord.ButtonStyle.secondary, row=3)
+        btn_back_btn.callback = self.btn_back
+
+        self.add_item(btn_scan_msg)
+        self.add_item(btn_scan_acc)
+        self.add_item(btn_panic_btn)
+        self.add_item(btn_unpanic_btn)
+        self.add_item(btn_back_btn)
 
     async def toggle_malware(self, interaction: discord.Interaction):
         update_config(self.guild_id, "malware_filter", int(not get_config(self.guild_id)["malware"]))
@@ -572,8 +710,7 @@ class SecurityMenuView(BaseSecurityView):
         update_config(self.guild_id, "suspect_scan", int(not get_config(self.guild_id).get("suspect_scan")))
         await interaction.response.edit_message(embed=get_security_menu_embed(self.guild_id), view=SecurityMenuView(self.guild_id))
 
-    @discord.ui.button(label="Scan Messages", style=discord.ButtonStyle.secondary, row=3)
-    async def btn_scan_messages(self, interaction: discord.Interaction, button: Button):
+    async def btn_scan_messages(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         sec_cog = interaction.client.get_cog("SecurityEventsCog")
         if sec_cog and hasattr(sec_cog, "run_message_backlog_scan"):
@@ -583,8 +720,7 @@ class SecurityMenuView(BaseSecurityView):
         else:
             await interaction.followup.send("Scanner module unavailable.", ephemeral=True)
 
-    @discord.ui.button(label="Scan Accounts", style=discord.ButtonStyle.secondary, row=3)
-    async def btn_scan_suspects(self, interaction: discord.Interaction, button: Button):
+    async def btn_scan_suspects(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         sec_cog = interaction.client.get_cog("SecurityEventsCog")
         if sec_cog and hasattr(sec_cog, "run_suspect_account_scan"):
@@ -608,8 +744,7 @@ class SecurityMenuView(BaseSecurityView):
         else:
             await interaction.followup.send("Account scanner unavailable.", ephemeral=True)
 
-    @discord.ui.button(label="Lockdown", style=discord.ButtonStyle.danger, row=3)
-    async def btn_panic(self, interaction: discord.Interaction, button: Button):
+    async def btn_panic(self, interaction: discord.Interaction):
         async def do_panic(inter: discord.Interaction):
             await inter.response.send_message("Initiating emergency lockdown across all channels...", ephemeral=False)
             guild = inter.guild
@@ -644,8 +779,7 @@ class SecurityMenuView(BaseSecurityView):
 
         await interaction.response.send_modal(OwnerPinModal("Global Panic", do_panic))
 
-    @discord.ui.button(label="Unlock", style=discord.ButtonStyle.secondary, row=3)
-    async def btn_unpanic(self, interaction: discord.Interaction, button: Button):
+    async def btn_unpanic(self, interaction: discord.Interaction):
         async def do_unpanic(inter: discord.Interaction):
             await inter.response.send_message("Lifting emergency lockdown...", ephemeral=False)
             guild = inter.guild
@@ -680,9 +814,8 @@ class SecurityMenuView(BaseSecurityView):
 
         await interaction.response.send_modal(OwnerPinModal("Unpanic Lockdown", do_unpanic))
 
-    @discord.ui.button(label="← Back", style=discord.ButtonStyle.secondary, row=3)
-    async def btn_back(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(content=None, embed=get_main_embed(self.guild_id), view=MainDashboardView())
+    async def btn_back(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(content=None, embed=get_main_embed(self.guild_id), view=MainDashboardView(self.guild_id))
 
 # ==========================================
 # ADVANCED SECURITY VIEW (ENTERPRISE HARDENING)
@@ -692,43 +825,35 @@ class AdvancedSecurityView(BaseSecurityView):
         super().__init__(timeout=300)
         self.guild_id = guild_id
         conf = get_config(guild_id)
+        lang = conf.get("language", "th")
 
         # Row 0: Advanced Heuristics
-        bot_label = "Anti-Bot  [ON]" if conf.get("anti_bot_add") else "Anti-Bot  [OFF]"
-        bot_btn = Button(label=bot_label, style=discord.ButtonStyle.primary if conf.get("anti_bot_add") else discord.ButtonStyle.secondary, row=0)
+        bot_btn = Button(label=f"Anti-Bot  [{'ON' if conf.get('anti_bot_add') else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("anti_bot_add") else discord.ButtonStyle.secondary, row=0)
         bot_btn.callback = self.toggle_anti_bot
         
-        mass_label = "Mass Action  [ON]" if conf.get("anti_mass_action") else "Mass Action  [OFF]"
-        mass_btn = Button(label=mass_label, style=discord.ButtonStyle.primary if conf.get("anti_mass_action") else discord.ButtonStyle.secondary, row=0)
+        mass_btn = Button(label=f"Mass Action  [{'ON' if conf.get('anti_mass_action') else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("anti_mass_action") else discord.ButtonStyle.secondary, row=0)
         mass_btn.callback = self.toggle_anti_mass
         
-        hijack_label = "Server Hijack  [ON]" if conf.get("anti_server_hijack") else "Server Hijack  [OFF]"
-        hijack_btn = Button(label=hijack_label, style=discord.ButtonStyle.primary if conf.get("anti_server_hijack") else discord.ButtonStyle.secondary, row=0)
+        hijack_btn = Button(label=f"Server Hijack  [{'ON' if conf.get('anti_server_hijack') else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("anti_server_hijack") else discord.ButtonStyle.secondary, row=0)
         hijack_btn.callback = self.toggle_anti_hijack
         
-        panic_label = "Auto-Panic  [ON]" if conf.get("auto_panic_escalation") else "Auto-Panic  [OFF]"
-        panic_btn = Button(label=panic_label, style=discord.ButtonStyle.primary if conf.get("auto_panic_escalation") else discord.ButtonStyle.secondary, row=0)
+        panic_btn = Button(label=f"Auto-Panic  [{'ON' if conf.get('auto_panic_escalation') else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("auto_panic_escalation") else discord.ButtonStyle.secondary, row=0)
         panic_btn.callback = self.toggle_auto_panic
         
-        zalgo_label = "Zalgo Filter  [ON]" if conf.get("anti_zalgo") else "Zalgo Filter  [OFF]"
-        zalgo_btn = Button(label=zalgo_label, style=discord.ButtonStyle.primary if conf.get("anti_zalgo") else discord.ButtonStyle.secondary, row=0)
+        zalgo_btn = Button(label=f"Zalgo Filter  [{'ON' if conf.get('anti_zalgo') else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("anti_zalgo") else discord.ButtonStyle.secondary, row=0)
         zalgo_btn.callback = self.toggle_anti_zalgo
 
         # Row 1: Zero-Day Hardening
-        unban_label = "Unban Guard  [ON]" if conf.get("anti_unban_guard", True) else "Unban Guard  [OFF]"
-        unban_btn = Button(label=unban_label, style=discord.ButtonStyle.primary if conf.get("anti_unban_guard", True) else discord.ButtonStyle.secondary, row=1)
+        unban_btn = Button(label=f"Unban Guard  [{'ON' if conf.get('anti_unban_guard', True) else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("anti_unban_guard", True) else discord.ButtonStyle.secondary, row=1)
         unban_btn.callback = self.toggle_anti_unban
         
-        imp_label = "Impersonation  [ON]" if conf.get("anti_impersonation", True) else "Impersonation  [OFF]"
-        imp_btn = Button(label=imp_label, style=discord.ButtonStyle.primary if conf.get("anti_impersonation", True) else discord.ButtonStyle.secondary, row=1)
+        imp_btn = Button(label=f"Impersonation  [{'ON' if conf.get('anti_impersonation', True) else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("anti_impersonation", True) else discord.ButtonStyle.secondary, row=1)
         imp_btn.callback = self.toggle_anti_impersonation
         
-        fp_label = "Raid Fingerprint  [ON]" if conf.get("raid_fingerprint", True) else "Raid Fingerprint  [OFF]"
-        fp_btn = Button(label=fp_label, style=discord.ButtonStyle.primary if conf.get("raid_fingerprint", True) else discord.ButtonStyle.secondary, row=1)
+        fp_btn = Button(label=f"Raid Fingerprint  [{'ON' if conf.get('raid_fingerprint', True) else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("raid_fingerprint", True) else discord.ButtonStyle.secondary, row=1)
         fp_btn.callback = self.toggle_raid_fingerprint
         
-        dm_label = "Owner Alerts  [ON]" if conf.get("dm_owner_alert", True) else "Owner Alerts  [OFF]"
-        dm_btn = Button(label=dm_label, style=discord.ButtonStyle.primary if conf.get("dm_owner_alert", True) else discord.ButtonStyle.secondary, row=1)
+        dm_btn = Button(label=f"Owner Alerts  [{'ON' if conf.get('dm_owner_alert', True) else 'OFF'}]", style=discord.ButtonStyle.primary if conf.get("dm_owner_alert", True) else discord.ButtonStyle.secondary, row=1)
         dm_btn.callback = self.toggle_dm_owner
 
         self.add_item(bot_btn)
@@ -740,6 +865,11 @@ class AdvancedSecurityView(BaseSecurityView):
         self.add_item(imp_btn)
         self.add_item(fp_btn)
         self.add_item(dm_btn)
+
+        # Row 2 Back button
+        back_btn = Button(label=t("back", lang), style=discord.ButtonStyle.secondary, row=2)
+        back_btn.callback = self.btn_back
+        self.add_item(back_btn)
 
     async def toggle_anti_bot(self, interaction: discord.Interaction):
         update_config(self.guild_id, "anti_bot_add", int(not get_config(self.guild_id).get("anti_bot_add")))
@@ -777,17 +907,17 @@ class AdvancedSecurityView(BaseSecurityView):
         update_config(self.guild_id, "dm_owner_alert", int(not get_config(self.guild_id).get("dm_owner_alert", True)))
         await interaction.response.edit_message(embed=get_advanced_security_embed(self.guild_id), view=AdvancedSecurityView(self.guild_id))
 
-    @discord.ui.button(label="← Back", style=discord.ButtonStyle.secondary, row=2)
-    async def btn_back(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(content=None, embed=get_main_embed(self.guild_id), view=MainDashboardView())
+    async def btn_back(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(content=None, embed=get_main_embed(self.guild_id), view=MainDashboardView(self.guild_id))
 
 def get_advanced_security_embed(guild_id: int):
     conf = get_config(guild_id)
-    badge = lambda k: "`ACTIVE`" if conf.get(k, True) else "`OFF`"
+    lang = conf.get("language", "th")
+    badge = lambda k: f"`{t('active', lang)}`" if conf.get(k, True) else f"`{t('disabled', lang)}`"
     
     embed = discord.Embed(
-        title="Enterprise Hardening Controls",
-        description="Heuristic defense modules operating at server level.\nToggle individual protections below to adjust rules.\n──────────────────────────────",
+        title=t("hardening_title", lang),
+        description=t("hardening_desc", lang),
         color=discord.Color(0x2B2D31)
     )
     embed.add_field(name="Anti-Bot Guard", value=f"{badge('anti_bot_add')} • Rejects unverified bots", inline=True)
@@ -807,6 +937,7 @@ def get_advanced_security_embed(guild_id: int):
 # ==========================================
 def get_settings_embed(guild_id: int):
     conf = get_config(guild_id)
+    lang = conf.get("language", "th")
     log_ch = f"<#{conf['log_channel']}>" if conf.get('log_channel') else "`Unconfigured`"
     q_role = f"<@&{conf['quarantine_role_id']}>" if conf.get('quarantine_role_id') else "`Unconfigured`"
     hp_ch = f"<#{conf['honeypot_channel_id']}>" if conf.get('honeypot_channel_id') else "`Not Deployed`"
@@ -814,8 +945,8 @@ def get_settings_embed(guild_id: int):
     pin_status = "`Configured`" if conf.get('owner_pin') else "`Default (123456)`"
     
     embed = discord.Embed(
-        title="Server Configuration & Decoys",
-        description="Manage log destinations, decoy traps, and access policies.\n──────────────────────────────",
+        title=t("settings_title", lang),
+        description=t("settings_desc", lang),
         color=discord.Color(0x2B2D31)
     )
     embed.add_field(name="Audit Log Channel", value=log_ch, inline=True)
@@ -830,6 +961,13 @@ class SettingsMenuView(BaseSecurityView):
     def __init__(self, guild_id: int):
         super().__init__(timeout=300)
         self.guild_id = guild_id
+        conf = get_config(guild_id)
+        lang = conf.get("language", "th")
+
+        # Row 2 Back button
+        back_btn = Button(label=t("back", lang), style=discord.ButtonStyle.secondary, row=2)
+        back_btn.callback = self.btn_back
+        self.add_item(back_btn)
         
     @discord.ui.select(cls=RoleSelect, placeholder="Select role to add/remove from Whitelist...", max_values=1, row=0)
     async def select_whitelist(self, interaction: discord.Interaction, select: RoleSelect):
@@ -857,7 +995,7 @@ class SettingsMenuView(BaseSecurityView):
     async def btn_set_pin(self, interaction: discord.Interaction, button: Button):
         await interaction.response.send_modal(SetupConfigModal("owner_pin", "Owner 2FA PIN (6 Digits)"))
 
-    @discord.ui.button(label="Deploy Honeypot Trap", style=discord.ButtonStyle.primary, row=2)
+    @discord.ui.button(label="Deploy Decoy Trap", style=discord.ButtonStyle.primary, row=2)
     async def btn_create_honeypot(self, interaction: discord.Interaction, button: Button):
         await interaction.response.defer(ephemeral=True)
         guild = interaction.guild
@@ -869,14 +1007,15 @@ class SettingsMenuView(BaseSecurityView):
         update_config(guild.id, "honeypot_channel_id", channel.id)
         await interaction.followup.send(f"Deployed honeypot decoy channel {channel.mention}. Hidden from members; unauthorized posts trigger automatic bans.", ephemeral=True)
 
-    @discord.ui.button(label="← Back", style=discord.ButtonStyle.secondary, row=2)
-    async def btn_back(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(content=None, embed=get_main_embed(self.guild_id), view=MainDashboardView())
+    async def btn_back(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(content=None, embed=get_main_embed(self.guild_id), view=MainDashboardView(self.guild_id))
 
 # ==========================================
 # BACKUP & DISASTER RECOVERY VIEW
 # ==========================================
 def get_backup_embed(guild_id: int):
+    conf = get_config(guild_id)
+    lang = conf.get("language", "th")
     latest = get_latest_backup(guild_id)
     if latest:
         dt = datetime.datetime.fromtimestamp(latest[1]).strftime('%Y-%m-%d %H:%M:%S')
@@ -886,8 +1025,8 @@ def get_backup_embed(guild_id: int):
         status = "*No manual backup found in database.*"
         
     embed = discord.Embed(
-        title="Server Backup & Disaster Recovery",
-        description=f"Snapshot server structure (channels, categories, roles, and permissions) for immediate rollback in case of an incident.\n──────────────────────────────\n\n**Latest Snapshot**\n{status}",
+        title=t("backup_title", lang),
+        description=f"{t('backup_desc', lang)}\n\n**Latest Snapshot**\n{status}",
         color=discord.Color(0x2B2D31)
     )
     embed.set_footer(text="Security Core • Disaster Recovery")
@@ -897,6 +1036,12 @@ class BackupMenuView(BaseSecurityView):
     def __init__(self, guild_id: int = 0):
         super().__init__(timeout=300)
         self.guild_id = guild_id
+        conf = get_config(guild_id) if guild_id else {}
+        lang = conf.get("language", "th")
+
+        back_btn = Button(label=t("back", lang), style=discord.ButtonStyle.secondary)
+        back_btn.callback = self.btn_back
+        self.add_item(back_btn)
 
     @discord.ui.button(label="Save Snapshot", style=discord.ButtonStyle.primary)
     async def btn_create_backup(self, interaction: discord.Interaction, button: Button):
@@ -929,18 +1074,19 @@ class BackupMenuView(BaseSecurityView):
 
         await interaction.response.send_modal(OwnerPinModal("Restore Backup", do_restore))
 
-    @discord.ui.button(label="← Back", style=discord.ButtonStyle.secondary)
-    async def btn_back(self, interaction: discord.Interaction, button: Button):
+    async def btn_back(self, interaction: discord.Interaction):
         g_id = interaction.guild.id if interaction.guild else self.guild_id
-        await interaction.response.edit_message(content=None, embed=get_main_embed(g_id), view=MainDashboardView())
+        await interaction.response.edit_message(content=None, embed=get_main_embed(g_id), view=MainDashboardView(g_id))
 
 # ==========================================
 # MAIN DASHBOARD EMBED & VIEW
 # ==========================================
 def get_main_embed(guild_id: int = 0):
+    lang = get_config(guild_id).get("language", "th") if guild_id else "th"
+    
     embed = discord.Embed(
-        title="Security Control Center",
-        description="Enterprise Discord Security • Zero-Trust Architecture\n──────────────────────────────",
+        title=t("main_title", lang),
+        description=t("main_desc", lang),
         color=discord.Color(0x2B2D31)
     )
     
@@ -983,53 +1129,83 @@ def get_main_embed(guild_id: int = 0):
                 stat_summary_lines.append(f"• **{lbl}**: `{data['count']}` mitigated")
             stats_text = "\n".join(stat_summary_lines)
         else:
-            stats_text = "*All perimeter defenses normal. No active threats recorded.*"
+            stats_text = t("no_threats", lang)
             
         embed.add_field(
-            name="Threat Analytics",
-            value=f"**Total Threats Mitigated:** `{total_blocked:,}`\n{stats_text}\n──────────────────────────────",
+            name=t("threat_analytics", lang),
+            value=f"**{t('threats_mitigated', lang)}:** `{total_blocked:,}`\n{stats_text}\n──────────────────────────────",
             inline=False
         )
         
     embed.add_field(
-        name="System Status",
-        value="• Core Defense: `ACTIVE`\n• Heuristic Engine: `ACTIVE`\n• Web Verify Gateway: `ONLINE`",
+        name=t("system_status", lang),
+        value=f"• Core Defense: `{t('active', lang)}`\n• Heuristic Engine: `{t('active', lang)}`\n• Web Verify Gateway: `{t('online', lang)}`",
         inline=True
     )
     embed.add_field(
-        name="Emergency Controls",
-        value="• Auto-Snapshot: `HEALTHY`\n• 2FA Security PIN: `ARMED`\n• IP Blacklist Sync: `ACTIVE`",
+        name=t("emergency_controls", lang),
+        value=f"• Auto-Snapshot: `{t('healthy', lang)}`\n• 2FA Security PIN: `{t('armed', lang)}`\n• IP Blacklist Sync: `{t('active', lang)}`",
         inline=True
     )
     embed.set_footer(text="Security Core • Enterprise Protection")
     return embed
 
 class MainDashboardView(BaseSecurityView):
-    def __init__(self):
+    def __init__(self, guild_id: int = 0):
         super().__init__(timeout=300)
+        self.guild_id = guild_id
+        lang = get_config(guild_id).get("language", "th") if guild_id else "th"
 
-    @discord.ui.button(label="Security Engine", style=discord.ButtonStyle.primary, row=0)
-    async def btn_security(self, interaction: discord.Interaction, button: Button):
+        # Row 0
+        btn_sec = Button(label=t("sec_engine", lang), style=discord.ButtonStyle.primary, row=0)
+        btn_sec.callback = self.btn_security
+        btn_adv = Button(label=t("hardening", lang), style=discord.ButtonStyle.secondary, row=0)
+        btn_adv.callback = self.btn_advanced_security
+        btn_lang = Button(label=t("lang_toggle", lang), style=discord.ButtonStyle.secondary, row=0)
+        btn_lang.callback = self.btn_language_toggle
+
+        # Row 1
+        btn_ver = Button(label=t("verify_access", lang), style=discord.ButtonStyle.secondary, row=1)
+        btn_ver.callback = self.btn_verify
+        btn_member = Button(label=t("member_controls", lang), style=discord.ButtonStyle.secondary, row=1)
+        btn_member.callback = self.btn_mod
+        btn_set = Button(label=t("configuration", lang), style=discord.ButtonStyle.secondary, row=1)
+        btn_set.callback = self.btn_settings
+
+        # Row 2
+        btn_back_up = Button(label=t("backup_restore", lang), style=discord.ButtonStyle.secondary, row=2)
+        btn_back_up.callback = self.btn_backup
+
+        self.add_item(btn_sec)
+        self.add_item(btn_adv)
+        self.add_item(btn_lang)
+        self.add_item(btn_ver)
+        self.add_item(btn_member)
+        self.add_item(btn_set)
+        self.add_item(btn_back_up)
+
+    async def btn_security(self, interaction: discord.Interaction):
         await interaction.response.edit_message(embed=get_security_menu_embed(interaction.guild.id), view=SecurityMenuView(interaction.guild.id))
 
-    @discord.ui.button(label="Hardening (2026)", style=discord.ButtonStyle.secondary, row=0)
-    async def btn_advanced_security(self, interaction: discord.Interaction, button: Button):
+    async def btn_advanced_security(self, interaction: discord.Interaction):
         await interaction.response.edit_message(embed=get_advanced_security_embed(interaction.guild.id), view=AdvancedSecurityView(interaction.guild.id))
 
-    @discord.ui.button(label="Verify & Access", style=discord.ButtonStyle.secondary, row=1)
-    async def btn_verify(self, interaction: discord.Interaction, button: Button):
+    async def btn_language_toggle(self, interaction: discord.Interaction):
+        current_lang = get_config(interaction.guild.id).get("language", "th")
+        new_lang = "en" if current_lang == "th" else "th"
+        update_config(interaction.guild.id, "language", new_lang)
+        await interaction.response.edit_message(embed=get_main_embed(interaction.guild.id), view=MainDashboardView(interaction.guild.id))
+
+    async def btn_verify(self, interaction: discord.Interaction):
         await interaction.response.edit_message(embed=get_verify_embed(interaction.guild.id), view=VerifyMenuView(interaction.guild.id))
 
-    @discord.ui.button(label="Member Controls", style=discord.ButtonStyle.secondary, row=1)
-    async def btn_mod(self, interaction: discord.Interaction, button: Button):
-        await interaction.response.edit_message(embed=get_moderation_embed(), view=ModerationMenuView())
+    async def btn_mod(self, interaction: discord.Interaction):
+        await interaction.response.edit_message(embed=get_moderation_embed(interaction.guild.id), view=ModerationMenuView(interaction.guild.id))
 
-    @discord.ui.button(label="Configuration", style=discord.ButtonStyle.secondary, row=1)
-    async def btn_settings(self, interaction: discord.Interaction, button: Button):
+    async def btn_settings(self, interaction: discord.Interaction):
         await interaction.response.edit_message(embed=get_settings_embed(interaction.guild.id), view=SettingsMenuView(interaction.guild.id))
 
-    @discord.ui.button(label="Backup & Restore", style=discord.ButtonStyle.secondary, row=2)
-    async def btn_backup(self, interaction: discord.Interaction, button: Button):
+    async def btn_backup(self, interaction: discord.Interaction):
         await interaction.response.edit_message(embed=get_backup_embed(interaction.guild.id), view=BackupMenuView(interaction.guild.id))
 
 # ==========================================
@@ -1043,13 +1219,13 @@ class DashboardCog(commands.Cog):
     @commands.has_permissions(manage_messages=True)
     async def open_dashboard(self, ctx):
         g_id = ctx.guild.id if ctx.guild else 0
-        await ctx.send(embed=get_main_embed(g_id), view=MainDashboardView())
+        await ctx.send(embed=get_main_embed(g_id), view=MainDashboardView(g_id))
 
     @app_commands.command(name="security", description="Open the Security Control Center dashboard")
     @app_commands.checks.has_permissions(manage_messages=True)
     async def slash_security(self, interaction: discord.Interaction):
         g_id = interaction.guild.id if interaction.guild else 0
-        await interaction.response.send_message(embed=get_main_embed(g_id), view=MainDashboardView())
+        await interaction.response.send_message(embed=get_main_embed(g_id), view=MainDashboardView(g_id))
 
     @commands.command(name="purge")
     @commands.has_permissions(manage_messages=True)

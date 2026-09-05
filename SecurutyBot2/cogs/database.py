@@ -31,7 +31,8 @@ ALLOWED_CONFIG_KEYS = {
     "suspect_scan", "global_panic",
     "anti_bot_add", "anti_mass_action", "anti_server_hijack",
     "auto_panic_escalation", "anti_zalgo",
-    "anti_unban_guard", "anti_impersonation", "raid_fingerprint", "dm_owner_alert"
+    "anti_unban_guard", "anti_impersonation", "raid_fingerprint", "dm_owner_alert",
+    "language"
 }
 
 def init_db():
@@ -82,6 +83,8 @@ def init_db():
     except: pass
     try: c.execute("ALTER TABLE guild_config ADD COLUMN verify_domain TEXT DEFAULT ''")
     except: pass
+    try: c.execute("ALTER TABLE guild_config ADD COLUMN language TEXT DEFAULT 'th'")
+    except: pass
 
     conn.commit()
     conn.close()
@@ -92,7 +95,7 @@ def get_config(guild_id: int):
     if guild_id in config_cache: return config_cache[guild_id]
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT log_channel_id, malware_filter, ai_filter, strike_system, anti_nuke, anti_mention, phishing_api, quarantine_role_id, voice_anti_raid, enforce_permissions, anti_dox, honeypot_channel_id, self_bot, webhook_guard, auto_purge, image_scanner, verify_channel_id, verify_role_id, min_account_age_days, ip_ban_guard, anti_vpn, ghost_ping_guard, owner_pin, anti_invite, verify_domain, suspect_scan, global_panic, anti_bot_add, anti_mass_action, anti_server_hijack, auto_panic_escalation, anti_zalgo, anti_unban_guard, anti_impersonation, raid_fingerprint, dm_owner_alert FROM guild_config WHERE guild_id = ?", (guild_id,))
+    c.execute("SELECT log_channel_id, malware_filter, ai_filter, strike_system, anti_nuke, anti_mention, phishing_api, quarantine_role_id, voice_anti_raid, enforce_permissions, anti_dox, honeypot_channel_id, self_bot, webhook_guard, auto_purge, image_scanner, verify_channel_id, verify_role_id, min_account_age_days, ip_ban_guard, anti_vpn, ghost_ping_guard, owner_pin, anti_invite, verify_domain, suspect_scan, global_panic, anti_bot_add, anti_mass_action, anti_server_hijack, auto_panic_escalation, anti_zalgo, anti_unban_guard, anti_impersonation, raid_fingerprint, dm_owner_alert, language FROM guild_config WHERE guild_id = ?", (guild_id,))
     row = c.fetchone()
     conn.close()
     if row:
@@ -117,7 +120,8 @@ def get_config(guild_id: int):
             "anti_unban_guard": bool(row[32] if len(row) > 32 and row[32] is not None else 1),
             "anti_impersonation": bool(row[33] if len(row) > 33 and row[33] is not None else 1),
             "raid_fingerprint": bool(row[34] if len(row) > 34 and row[34] is not None else 1),
-            "dm_owner_alert": bool(row[35] if len(row) > 35 and row[35] is not None else 1)
+            "dm_owner_alert": bool(row[35] if len(row) > 35 and row[35] is not None else 1),
+            "language": row[36] if len(row) > 36 and row[36] in ("th", "en") else "th"
         }
     else:
         conf = {
@@ -131,7 +135,8 @@ def get_config(guild_id: int):
             "suspect_scan": True, "global_panic": False,
             "anti_bot_add": True, "anti_mass_action": True, "anti_server_hijack": True,
             "auto_panic_escalation": True, "anti_zalgo": True,
-            "anti_unban_guard": True, "anti_impersonation": True, "raid_fingerprint": True, "dm_owner_alert": True
+            "anti_unban_guard": True, "anti_impersonation": True, "raid_fingerprint": True, "dm_owner_alert": True,
+            "language": "th"
         }
         update_config(guild_id, "log_channel_id", DEFAULT_LOG_CHANNEL_ID)
         update_config(guild_id, "honeypot_channel_id", DEFAULT_HONEYPOT_CHANNEL_ID)

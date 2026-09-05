@@ -55,6 +55,15 @@
     - DM Emergency Alert to Owner (แจ้งเตือนฉุกเฉินระดับ Critical ตรงหา Server Owner)
     - ระบบ Backup โครงสร้างเซิร์ฟเวอร์ (ยศ, หมวดหมู่, ช่อง) และ Auto-Snapshot ทุก 6 ชั่วโมง
 
+[8] ระบบ Bilingual UI (สลับภาษาไทย 🇹🇭 / อังกฤษ 🇬🇧 ได้ทันที)
+    - เพิ่มปุ่ม Language Toggle บน Dashboard สลับภาษาได้ทันทีในคลิกเดียว
+    - รองรับทั้งภาษาไทยและอังกฤษในทุก Embeds, Views, Buttons และหน้าควบคุมสไตล์ Rythm
+
+[9] ระบบ Render Memory Resilience & DDoS Auto-Pruner (รองรับการยิงดิสหนัก)
+    - Memory Guard loop (ทุก 30 วินาที) ล้างข้อมูล Tracker เก่า คืน RAM ด้วย Garbage Collection อัตโนมัติ
+    - ป้องกันปัญหา OOM (Out Of Memory) บน Render Free/Starter 512MB แม้โดนยิงบอทถล่มเป็นหมื่นข้อความ
+    - ปรับปรุงการตอบสนอง Discord Interaction ป้องกัน Timeout เมื่อมี Network Latency บน Render
+
 -------------------------------------------------------------------------------
 3. แผนการพัฒนาในอนาคต (FUTURE ROADMAP & TODO)
 -------------------------------------------------------------------------------

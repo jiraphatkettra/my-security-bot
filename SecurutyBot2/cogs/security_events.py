@@ -475,10 +475,52 @@ class SecurityEventsCog(commands.Cog):
         self.bot = bot
         self.flush_delete_queue.start()
         self.auto_snapshot_task.start()
+        self.memory_guard_task.start()
 
     def cog_unload(self):
         self.flush_delete_queue.cancel()
         self.auto_snapshot_task.cancel()
+        self.memory_guard_task.cancel()
+
+    @tasks.loop(seconds=30)
+    async def memory_guard_task(self):
+        """Automated memory guard task for Render stability under heavy spam/raid attacks"""
+        try:
+            now = time.time()
+            # 1. Prune user message trackers older than 30s
+            for d in (user_message_timestamps, user_last_messages):
+                stale = [uid for uid, ts in d.items() if not ts or (now - ts[-1] > 30 if isinstance(ts[-1], (int, float)) else False)]
+                for uid in stale[:500]:
+                    d.pop(uid, None)
+            
+            # 2. Limit recent joins and member profiles size per guild
+            for g_id in list(recent_joins_dict.keys()):
+                recent_joins_dict[g_id] = [t for t in recent_joins_dict[g_id] if now - t < 60]
+                if len(recent_joins_dict[g_id]) > 50:
+                    recent_joins_dict[g_id] = recent_joins_dict[g_id][-50:]
+            
+            for g_id in list(recent_member_profiles.keys()):
+                recent_member_profiles[g_id] = [p for p in recent_member_profiles[g_id] if now - p.get("time", 0) < 60]
+                if len(recent_member_profiles[g_id]) > 30:
+                    recent_member_profiles[g_id] = recent_member_profiles[g_id][-30:]
+            
+            # 3. Prune internal action trackers
+            for d in (webhook_msg_timestamps, admin_action_timestamps, voice_join_timestamps, kick_timestamps, timeout_timestamps, role_edit_timestamps, channel_edit_timestamps, emoji_delete_timestamps, sticker_delete_timestamps, unban_timestamps):
+                for g_id in list(d.keys()):
+                    sub_d = d[g_id]
+                    stale_sub = [k for k, v in sub_d.items() if not v or (now - v[-1] > 60 if isinstance(v[-1], (int, float)) else False)]
+                    for k in stale_sub[:100]:
+                        sub_d.pop(k, None)
+            
+            # 4. Trigger Python garbage collection to release RAM back to OS/Render
+            import gc
+            gc.collect()
+        except Exception:
+            pass
+
+    @memory_guard_task.before_loop
+    async def before_memory_guard(self):
+        await self.bot.wait_until_ready()
 
     @tasks.loop(seconds=0.8)
     async def flush_delete_queue(self):
