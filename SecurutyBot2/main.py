@@ -1,17 +1,20 @@
 import os
 import sys
+import functools
 import asyncio
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
-# ป้องกัน UnicodeEncodeError เมื่อรันบน Windows (CMD / PowerShell)
+# ป้องกัน UnicodeEncodeError และบังคับให้แสดง Log บน Render ทันที (Unbuffered Output)
 if sys.stdout and hasattr(sys.stdout, 'reconfigure'):
-    try: sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    try: sys.stdout.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
     except: pass
 if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
-    try: sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    try: sys.stderr.reconfigure(encoding='utf-8', errors='replace', line_buffering=True)
     except: pass
+
+print = functools.partial(print, flush=True)
 
 # ==========================================
 # 1. โหลดค่า ENVIRONMENT & ตั้งค่า INTENTS
