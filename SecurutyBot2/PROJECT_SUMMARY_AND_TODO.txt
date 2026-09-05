@@ -1,62 +1,68 @@
 ===============================================================================
                DISCORD ENTERPRISE SECURITY BOT - PROJECT SUMMARY & TODO
 ===============================================================================
-วันที่บันทึก: 11 สิงหาคม 2569
+อัปเดตล่าสุด: กันยายน 2569 (Enterprise Hardening & Zero-Trust Architecture)
 ที่อยู่โปรเจกต์: D:\BOTBANG\SecurutyBot - Copy\SecurutyBot2
 
 -------------------------------------------------------------------------------
 1. โครงสร้างไฟล์ในปัจจุบัน (FILE STRUCTURE)
 -------------------------------------------------------------------------------
-- main.py                  : ไฟล์หลักสำหรับรันบอทและโหลด Cogs ทั้งหมด
-- cogs/database.py         : ระบบจัดการ SQLite, Cache, Config Schema, Audit Logs
-- cogs/dashboard.py        : ระบบ UI (Views, Modals, Buttons, Slash Commands, Control Panel)
-- cogs/security_events.py  : ระบบ Auto-Mod, Anti-Nuke, Webhook Guard, Event Listeners
-- cogs/web_verify.py       : ระบบยืนยันตัวตนผ่านเว็บ และระบบดักจับ IP Logs
+- main.py                  : ไฟล์หลักสำหรับรันบอทและโหลด Cogs ทั้งหมด (Unbuffered output, Slash sync)
+- cogs/database.py         : ระบบจัดการ SQLite, Cache, Config Schema, Audit Logs, Security Stats
+- cogs/dashboard.py        : ระบบ UI (Views, Modals, Buttons, Slash Commands, SOC Control Panel)
+- cogs/security_events.py  : ระบบ Heuristics Engine, Anti-Nuke, Raid Fingerprint, Phishing, Listeners
+- cogs/web_verify.py       : ระบบยืนยันตัวตนผ่านเว็บ และระบบดักจับ IP Logs / Anti-VPN
+- AI_INSTRUCTIONS.md       : คู่มือสรุปสถาปัตยกรรมและพร้อมต์สั่งงานสำหรับ AI ทุกตัว
+- README.md                : คู่มือสรุปฟังก์ชันและคำสั่งการใช้งานโปรเจกต์
 
 -------------------------------------------------------------------------------
-2. สรุปสิ่งที่พัฒนาและแก้ไขเสร็จสมบูรณ์แล้ว (COMPLETED FEATURES)
+2. สรุปสิ่งที่พัฒนาและเปิดใช้งานสมบูรณ์แล้ว (ALL COMPLETED FEATURES)
 -------------------------------------------------------------------------------
-[1] ระบบ Global Panic & Lockdown Mode (แก้ไขปัญหาสิทธิ์พิมพ์ข้อความค้าง)
-    - เพิ่มคีย์ `global_panic` ใน Database
-    - ปุ่ม `🚨 Global Panic` ล็อกสิทธิ์ส่งข้อความ/เธรด/เสียงของทุกยศที่ไม่ใช่ Admin
-    - ปุ่ม `🟢 ปลด Global Panic` คืนสิทธิ์การส่งข้อความทั้งหมด
-    - ดักลบข้อความสดทันทีใน `on_message` สำหรับผู้ใช้ทั่วไป/Webhook ที่ไม่อยู่ใน Whitelist
+[1] ระบบ Global Panic & Lockdown Mode (ป้องกันเซิร์ฟถูกทำลาย)
+    - สั่งล็อกสิทธิ์ส่งข้อความ/เธรด/เสียงของทุกห้องในคลิกเดียว ปลดล็อกด้วย Owner PIN (2FA)
 
-[2] ระบบป้องกัน Webhook Spam Attack & Bulk Purge (สกัดกั้นการยิงดิส)
-    - เพิ่มความไวการตรวจจับ (สแปม 2 ข้อความใน 5 วินาที หรือคำสแปมยิงดิส เช่น CyberNuvex, โกโก้กลัว)
-    - สั่ง Bulk Purge กวาดลบข้อความสแปมค้างย้อนหลังได้สูงสุด 500 ข้อความต่อครั้ง
-    - สั่งทำลายลบ Webhook สแปมทิ้งทันที
-    - ค้นหา Audit Log สั่ง BAN ผู้สร้าง Webhook นั้นออกจากเซิร์ฟเวอร์ทันที
+[2] ระบบป้องกัน Webhook Spam Attack & Instant Killer
+    - ลบ Webhook ทันทีที่ถูกสร้างโดยผู้ที่ไม่ใช่ Whitelist/Owner + แบนคนสร้าง
+    - สกัดกั้นสแปมยิงดิสจาก Webhook + Bulk Purge ย้อนหลังสูงสุด 500 ข้อความ
 
-[3] ระบบทำลาย Webhook ทันทีที่ถูกสร้าง (Instant Webhook Creation Killer)
-    - อัปเกรด `on_webhooks_update` ตรวจสอบ Audit Log ทันทีที่มีการสร้าง Webhook ใหม่
-    - หากผู้สร้างไม่ได้อยู่ใน Whitelist หรือไม่ใช่ Server Owner บอทจะลบ Webhook ทิ้งในเสี้ยววินาที + สั่ง BAN ผู้สร้างทันที
+[3] ระบบ Anti-Invite & OAuth2 Bot Link Guard
+    - ดักจับทั้ง discord.gg และลิงก์ดูดสิทธิ์ discord.com/oauth2/authorize
 
-[4] ระบบ Anti-Invite & OAuth2 Bot Link Guard (สกัดกั้นลิงก์เชิญและลิงก์ดูดสิทธิ์)
-    - เพิ่มการตรวจจับ Regex ครอบคลุมทั้ง `discord.gg`, `discord.com/invite` 
-    - รองรับการดักลบลิงก์ **`discord.com/oauth2/authorize`** (ลิงก์เชิญบอท/ลิงก์ OAuth2 สแกมดึงสิทธิ์)
+[4] ระบบ Anti-Nuke & Privilege Protection (ระดับแกนกลาง)
+    - Anti-Nuke Channel/Role deletion rate limit (> 3 ครั้งใน 10 วิ -> ริบยศ + กักกัน)
+    - Anti-Permission Escalation (ดักจับการแอบให้ Admin/Manage Roles/Ban/Kick -> ดึงสิทธิ์กลับทันที + ริบยศ)
+    - Anti-Mass Role Edit / Delete / Create Guard
+    - Anti-Channel Tampering Guard (on_guild_channel_update)
+    - Anti-Emoji & Sticker Nuke Guard (on_guild_emojis_update, on_guild_stickers_update)
+    - Anti-Unban Bypass Guard (ดักจับการแอบกด Unban ใน on_member_unban -> แบนซ้ำทันที + ริบยศ)
 
-[5] แยกปุ่มสแกนบน Control Panel UI (Dashboard)
-    - ปุ่ม `💬 สแกนข้อความสแปมย้อนหลัง`: กวาดลบข้อความสแปม/Webhook ค้าง/Token leak/มัลแวร์ (500 ข้อความ/ช่อง)
-    - ปุ่ม `👥 สแกนไอดีดิสสมัครใหม่`: สแกนรายชื่อสมาชิกหาสมัครใหม่ <7-14 วัน / ไอดีไม่มีรูปโปรไฟล์
+[5] ระบบ Anti-Raid, Anti-Bot & Member Protection
+    - Raid Fingerprinting Correlation (ตรวจจับลายนิ้วมือบอทบุกแบบ Multi-Factor ด้วย Levenshtein distance)
+    - Anti-Bot Add Guard (เตะบอทแปลกหน้าทันที + ริบยศคนเชิญ)
+    - Anti-Mass Kick & Anti-Mass Timeout Guard (> 4 ครั้งใน 10 วิ -> ริบยศ)
+    - Anti-Server Hijack Guard (ดักจับการแอบเปลี่ยนชื่อ/รูปดิส -> เปลี่ยนกลับทันที + ริบยศ)
+    - Nickname Impersonation Guard (ดักจับการปลอมชื่อเป็น Admin/Staff/Owner -> รีเซ็ตชื่อทันที)
+
+[6] ระบบ Enhanced Phishing, Typosquatting & Anti-Spam
+    - ดักจับ Typosquatting & Cyrillic Homoglyphs (เช่น disc0rd, disсord ที่ใช้ Cyrillic а/о, TLD .xyz/.top/.ru)
+    - Anti-Zalgo & Crash Text Guard (ดักจับ Combining Marks หนาแน่นผิดปกติที่ทำให้ดิสค้าง)
+    - Honeypot Invisible Trap (ห้องดักบอทล่องหน ใครพิมพ์ = แบนทันที + DM Alert)
+    - Ghost Ping Guard (ดักจับคนแท็กแล้วลบข้อความ)
+
+[7] ระบบ Dashboard, SOC Stats & Emergency Alert
+    - SOC Real-Time Security Stats ใน Embed หน้าแรก (นับยอดระงับภัยคุกคามสะสมแบบสด)
+    - เมนูควบคุมความปลอดภัยขั้นสูง (Advanced Security View) ปรับแต่ง 9 ระบบใหม่ผ่านปุ่ม UI
+    - DM Emergency Alert to Owner (แจ้งเตือนฉุกเฉินระดับ Critical ตรงหา Server Owner)
+    - ระบบ Backup โครงสร้างเซิร์ฟเวอร์ (ยศ, หมวดหมู่, ช่อง) และ Auto-Snapshot ทุก 6 ชั่วโมง
 
 -------------------------------------------------------------------------------
-3. แผนการพัฒนาและสถาปัตยกรรมในอนาคต (FUTURE ROADMAP & TODO)
+3. แผนการพัฒนาในอนาคต (FUTURE ROADMAP & TODO)
 -------------------------------------------------------------------------------
 [📌] 1. Multi-Cloud Hybrid Failover (Render -> Discloud) + Turso Cloud DB
-    - ปัญหาปัจจุบัน: Render Free สเปกแรงแต่ตัด 500 ชม. ตอนวันที่ 20 ของเดือน และ SQLite หายเมื่อ Restart
-    - ทางแก้ไข: 
-      1) ย้ายการเซฟ DB ไปใช้ Turso Cloud DB (`libsql://...`) ซึ่งเป็น SQLite บน Cloud ข้อมูล Whitelist/Log จะไม่หายตลอดกาล
-      2) เขียนระบบ Heartbeat Lock ให้ Render รันหลัก (วันที่ 1-20) และหาก Render ดับ ให้ Discloud (ตัวสำรอง) ตื่นขึ้นมารันแทนอัตโนมัติ (วันที่ 21-30)
-      3) ปรับแต่งโค้ดฝั่ง Discloud ให้กิน RAM เพียง ~40MB โดยเปลี่ยน OCR ไปใช้ OCR.space API เพื่อรันบน Discloud Free 100MB ได้สบายๆ
+    - ขยายการจัดเก็บ SQLite ขึ้น Cloud DB (เช่น Turso / LibSQL) เพื่อให้ Data ไม่หายเมื่อรีสตาร์ทบน Free Tier
+    - ระบบ Heartbeat Lock สลับการทำงานสำรองอัตโนมัติ
 
-[📌] 2. ระบบ Smart Auto-Setup (Zero Configuration)
-    - เพิ่มปุ่ม `⚡ Auto-Setup` บน Dashboard หรือระบบอัตโนมัติ `on_guild_join`
-    - ค้นหา/สร้างช่อง `#security-audit-logs` ให้อัตโนมัติ
-    - ดึงยศแอดมินทุกยศในดิสเข้า Whitelist ให้อัตโนมัติโดยผู้ใช้ไม่ต้องคอยพิมพ์ ID เอง
-
-[📌] 3. ระบบ Server Backup & One-Click Restore
-    - Auto-snapshot โครงสร้างดิส (ห้อง, หมวดหมู่, ยศ) ลง DB
-    - กู้คืนดิสเสี้ยววินาทีหากเกิดเหตุ Nuke หรือแอดมินโดนดูด Token
+[📌] 2. One-Click Automated Server Restoration
+    - ปรับปรุงขั้นตอน Restore ให้สร้างห้อง/ยศจาก Snapshot อัตโนมัติในคลิกเดียว
 
 ===============================================================================

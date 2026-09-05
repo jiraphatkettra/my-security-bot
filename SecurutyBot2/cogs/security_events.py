@@ -12,9 +12,10 @@ import sys
 from collections import defaultdict
 from discord.ext import commands, tasks
 
-from cogs.database import get_config, get_whitelist, send_audit_log, ban_user_ips, update_config, save_server_snapshot
+from cogs.database import get_config, get_whitelist, send_audit_log, ban_user_ips, update_config, save_server_snapshot, increment_security_stat
 import json
 import unicodedata
+import difflib
 
 if sys.platform == "win32" and os.path.exists(r'C:\Program Files\Tesseract-OCR\tesseract.exe'):
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
@@ -48,6 +49,12 @@ webhook_msg_timestamps = defaultdict(lambda: defaultdict(list))
 thread_create_timestamps = defaultdict(lambda: defaultdict(list))
 kick_timestamps = defaultdict(lambda: defaultdict(list))
 timeout_timestamps = defaultdict(lambda: defaultdict(list))
+role_edit_timestamps = defaultdict(lambda: defaultdict(list))
+channel_edit_timestamps = defaultdict(lambda: defaultdict(list))
+emoji_delete_timestamps = defaultdict(lambda: defaultdict(list))
+sticker_delete_timestamps = defaultdict(lambda: defaultdict(list))
+unban_timestamps = defaultdict(lambda: defaultdict(list))
+recent_member_profiles = defaultdict(list)
 invite_cache = {}
 last_raid_invite_purge = defaultdict(float)
 
@@ -117,7 +124,203 @@ async def check_phishing_api(url: str):
         return True
     if any(s_dom in url_lower for s_dom in SHORTENER_DOMAINS):
         return True
+    is_typo, _ = is_typosquatting(url)
+    if is_typo:
+        return True
     return False
+
+# ==========================================
+# 🚨 OWNER EMERGENCY DM ALERT SYSTEM
+# ==========================================
+async def dm_alert_owner(guild: discord.Guild, title: str, description: str, color: discord.Color = discord.Color.dark_red()):
+    conf = get_config(guild.id)
+    if not conf.get("dm_owner_alert", True):
+        return
+    try:
+        owner = guild.owner
+        if not owner and guild.owner_id:
+            try: owner = await guild.fetch_member(guild.owner_id)
+            except: pass
+        if not owner:
+            return
+        embed = discord.Embed(
+            title=f"[CRITICAL ALERT] {title}",
+            description=f"**Server:** `{guild.name}` (ID: `{guild.id}`)\n\n{description}",
+            color=color,
+            timestamp=datetime.datetime.now()
+        )
+        embed.set_footer(text="Security Core • Emergency Notification")
+        await owner.send(embed=embed)
+    except Exception as e:
+        print(f"Failed to send DM to owner: {e}")
+
+# ==========================================
+# 🌐 ENHANCED PHISHING & HOMOGLYPH DETECTION
+# ==========================================
+CYRILLIC_HOMOGLYPHS = {
+    '\u0430': 'a', '\u0441': 'c', '\u0435': 'e', '\u043e': 'o',
+    '\u0440': 'p', '\u0456': 'i', '\u0443': 'y', '\u0445': 'x',
+    '\u0455': 's', '\u0406': 'I', '\u0410': 'A', '\u0412': 'B',
+    '\u0415': 'E', '\u041a': 'K', '\u041c': 'M', '\u041d': 'H',
+    '\u041e': 'O', '\u0420': 'P', '\u0421': 'C', '\u0422': 'T',
+    '\u0425': 'X'
+}
+
+TYPO_KEYWORDS = [
+    "disc0rd", "discorcl", "discrod", "dlscord", "discordd", "discord-app",
+    "discord-nitro", "discord-gift", "discord-airdrop", "steamcommunlty",
+    "steamcommunityy", "steancommunity", "robl0x", "free-nitro", "free-robux",
+    "discorcl.com", "disc0rd.com", "dlscord.com", "discord-claim", "discord-free"
+]
+
+RISKY_TLDS = (
+    ".ru", ".xyz", ".tk", ".ml", ".ga", ".cf", ".top", ".click", 
+    ".rest", ".buzz", ".fit", ".kim", ".gq", ".work", ".loan"
+)
+
+def is_typosquatting(text: str) -> tuple[bool, str]:
+    if not text:
+        return False, ""
+    text_lower = text.lower()
+    
+    # 1. Direct typo keywords
+    for typo in TYPO_KEYWORDS:
+        if typo in text_lower:
+            return True, f"ตรวจพบชื่อโดเมนเลียนแบบ/Typosquatting: `{typo}`"
+
+    # 2. Extract URLs and check homoglyphs & risky TLDs
+    urls = re.findall(URL_REGEX, text, re.IGNORECASE)
+    for url in urls:
+        url_clean = url.lower().replace("https://", "").replace("http://", "").split("/")[0].split("?")[0]
+        
+        # Homoglyphs check: Contains Cyrillic mixed into domain
+        has_cyrillic = any(ch in CYRILLIC_HOMOGLYPHS for ch in url)
+        if has_cyrillic:
+            normalized_domain = "".join(CYRILLIC_HOMOGLYPHS.get(ch, ch) for ch in url_clean)
+            if any(k in normalized_domain for k in ["discord", "steam", "nitro", "gift"]):
+                return True, f"ตรวจพบ Homograph Attack (ผสมอักษร Cyrillic ปลอมแปลงโดเมน): `{url_clean}`"
+
+        # Risky TLDs with lure keywords
+        for tld in RISKY_TLDS:
+            if url_clean.endswith(tld) or f"{tld}/" in url.lower():
+                if any(k in url.lower() for k in ["discord", "nitro", "gift", "steam", "promo", "free", "airdrop", "verify", "claim"]):
+                    return True, f"ตรวจพบ Phishing URL บนโดเมนความเสี่ยงสูง (`{tld}`): `{url_clean}`"
+
+    return False, ""
+
+# ==========================================
+# 🎭 NICKNAME IMPERSONATION GUARD
+# ==========================================
+def is_impersonating_admin(member: discord.Member) -> tuple[bool, str]:
+    if not member or not member.guild or member.bot:
+        return False, ""
+    guild = member.guild
+    if member.id == guild.owner_id:
+        return False, ""
+    if member.guild_permissions.administrator:
+        return False, ""
+    if any(r.id in get_whitelist(guild.id) for r in member.roles):
+        return False, ""
+
+    protected_names = set()
+    owner = guild.owner
+    if owner:
+        protected_names.add(owner.name.lower())
+        if owner.nick:
+            protected_names.add(owner.nick.lower())
+
+    for m in guild.members:
+        if m.id != member.id and (m.guild_permissions.administrator or any(r.id in get_whitelist(guild.id) for r in m.roles)):
+            protected_names.add(m.name.lower())
+            if m.nick:
+                protected_names.add(m.nick.lower())
+
+    candidate_names = [member.name.lower(), member.display_name.lower()]
+    if member.nick:
+        candidate_names.append(member.nick.lower())
+
+    for name in candidate_names:
+        for tag in ["[admin]", "[owner]", "[staff]", "[mod]", "[moderator]", "[official]", "owner |", "admin |", "staff |"]:
+            if name.startswith(tag) or tag in name:
+                return True, f"สวมรอยใช้แท็ก Staff ({tag})"
+
+    def clean_str(s: str) -> str:
+        trans = str.maketrans({'0': 'o', '1': 'i', '3': 'e', '4': 'a', '@': 'a', '$': 's', '!': 'i'})
+        s = s.translate(trans)
+        return re.sub(r"[^a-zA-Z0-9\u0E00-\u0E7F]", "", s)
+
+    for cand in candidate_names:
+        cleaned_cand = clean_str(cand)
+        if len(cleaned_cand) < 3:
+            continue
+        for prot in protected_names:
+            cleaned_prot = clean_str(prot)
+            if len(cleaned_prot) < 3:
+                continue
+            if cleaned_cand == cleaned_prot:
+                return True, prot
+            if len(cleaned_prot) >= 5:
+                ratio = difflib.SequenceMatcher(None, cleaned_cand, cleaned_prot).ratio()
+                if ratio >= 0.88:
+                    return True, prot
+
+    return False, ""
+
+# ==========================================
+# 🕵️ RAID FINGERPRINTING SYSTEM
+# ==========================================
+def check_raid_fingerprint(guild: discord.Guild, member: discord.Member) -> tuple[bool, str]:
+    now = time.time()
+    recent_member_profiles[guild.id].append({
+        "id": member.id,
+        "name": member.name.lower(),
+        "created_at": member.created_at,
+        "avatar": member.avatar is not None,
+        "joined_at": now
+    })
+    recent_member_profiles[guild.id] = [p for p in recent_member_profiles[guild.id] if now - p["joined_at"] < 60]
+    
+    profiles = recent_member_profiles[guild.id]
+    if len(profiles) < 3:
+        return False, ""
+
+    reasons = []
+    
+    # Indicator 1: Default Avatar
+    no_avatar_count = sum(1 for p in profiles if not p["avatar"])
+    if no_avatar_count >= 3 and (no_avatar_count / len(profiles)) >= 0.7:
+        reasons.append(f"• สมาชิก {no_avatar_count}/{len(profiles)} บัญชีไม่มีรูปโปรไฟล์ (Default Avatar)")
+
+    # Indicator 2: Very fresh accounts (< 24 hours old)
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    fresh_count = 0
+    for p in profiles:
+        c_at = p["created_at"] if p["created_at"].tzinfo else p["created_at"].replace(tzinfo=datetime.timezone.utc)
+        if (now_utc - c_at).total_seconds() < 86400:
+            fresh_count += 1
+    if fresh_count >= 3 and (fresh_count / len(profiles)) >= 0.6:
+        reasons.append(f"• สมาชิก {fresh_count}/{len(profiles)} บัญชีสมัครใหม่ไม่ถึง 24 ชั่วโมง")
+
+    # Indicator 3: Created in same time window (within 6 hours of each other)
+    timestamps = [p["created_at"].timestamp() for p in profiles]
+    time_span = max(timestamps) - min(timestamps)
+    if len(profiles) >= 3 and time_span < 21600:
+        reasons.append(f"• สมาชิกทั้งหมดถูกสร้างขึ้นในเวลาไล่เลี่ยกัน (ช่วงเวลาห่างกันไม่เกิน 6 ชม.)")
+
+    # Indicator 4: Common name pattern
+    names = [p["name"] for p in profiles]
+    prefix = os.path.commonprefix(names)
+    has_common_prefix = len(prefix) >= 3
+    digit_suffix_count = sum(1 for n in names if re.search(r"\d{2,}$", n))
+    if has_common_prefix:
+        reasons.append(f"• รูปแบบชื่อบัญชีมี Prefix ตรงกัน: `{prefix}`")
+    elif digit_suffix_count >= 3:
+        reasons.append(f"• รูปแบบชื่อบัญชีลงท้ายด้วยตัวเลขสแปมสอดคล้องกัน ({digit_suffix_count}/{len(profiles)} คน)")
+
+    if len(reasons) >= 3:
+        return True, "\n".join(reasons)
+
+    return False, ""
 
 def is_zalgo_text(text: str) -> bool:
     """ตรวจจับข้อความ Zalgo ที่มี Combining Marks ซ้อนกันหนาแน่นเกินไป"""
@@ -229,16 +432,23 @@ async def check_anti_nuke(guild: discord.Guild, user: discord.Member, action: st
                     overwrite.connect = False
                     await channel.set_permissions(default_role, overwrite=overwrite)
                 except: pass
+            increment_security_stat(guild.id, "auto_panic")
             await send_audit_log(guild, "🔥 AUTO-PANIC ESCALATION!",
                 f"Anti-Nuke ตรวจพบการทำลายเซิร์ฟเวอร์โดย {user.mention}\n"
                 f"⚡ **สั่งล็อกดาวน์ (Global Panic) อัตโนมัติทันที!**",
                 discord.Color.dark_red())
+            await dm_alert_owner(guild, "🔥 AUTO-PANIC ESCALATION!",
+                f"Anti-Nuke ตรวจพบการทำลายเซิร์ฟเวอร์โดย {user.mention} (`{user.id}`)\n"
+                f"⚡ **สั่งล็อกดาวน์ (Global Panic) อัตโนมัติทันที!**")
+
         try:
             for role in user.roles:
                 if role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_channels or role.permissions.manage_roles:
                     try: await user.remove_roles(role, reason="[Anti-Nuke] ตรวจพบการทำลายเซิร์ฟเวอร์")
                     except: pass
+            increment_security_stat(guild.id, "anti_nuke")
             await send_audit_log(guild, "🚨 ANTI-NUKE ทำงาน!", f"ทำการริบสิทธิ์ {user.mention} ทันที\nสาเหตุ: ทำการ {action} ถี่เกินกำหนด (เกิน 4 ครั้ง/10 วิ)", discord.Color.red())
+            await dm_alert_owner(guild, "🚨 ANTI-NUKE DETECTED!", f"ตรวจพบ {user.mention} (`{user.id}`) ทำการ **{action}** ถี่เกินกำหนด (> 4 ครั้ง/10 วิ)\nบอทได้ทำการริบยศแอดมินทั้งหมดทันที")
             admin_action_timestamps[guild.id][user.id].clear()
         except Exception as e:
             await send_audit_log(guild, "⚠️ ANTI-NUKE ขัดข้อง", f"ไม่สามารถริบยศ {user.mention} ได้ (อาจจะยศสูงกว่าบอท)\nError: {e}", discord.Color.orange())
@@ -567,14 +777,54 @@ class SecurityEventsCog(commands.Cog):
                                         if role.permissions.administrator or role.permissions.manage_guild:
                                             try: await inviter.remove_roles(role, reason="[Anti-Bot Guard] ริบสิทธิ์เนื่องจากเชิญบอทไม่ได้รับอนุญาต")
                                             except: pass
+                                increment_security_stat(guild.id, "anti_bot_add")
                                 await send_audit_log(guild, "🤖 Anti-Bot Guard ทำงาน!",
                                     f"สกัดกั้นบอท {member.mention} (`{member.id}`) ที่ถูกเชิญโดย {inviter.mention}\n"
                                     f"⚡ **เตะบอทออก + ริบสิทธิ์แอดมินผู้เชิญทันที!**",
                                     discord.Color.dark_red())
+                                await dm_alert_owner(guild, "🤖 ANTI-BOT ADD DETECTED!",
+                                    f"ตรวจพบบอท {member.name} (`{member.id}`) ถูกเชิญเข้าเซิร์ฟเวอร์โดย {inviter.mention} (`{inviter.id}`)\n"
+                                    f"บอทได้ทำการเตะบอทออกและริบยศแอดมินของคนเชิญทันที!")
                                 return
                         break
             except Exception as e:
                 print(f"Anti-Bot Guard Error: {e}")
+
+        # 2.8 🕵️ Raid Fingerprint Scanner (วิเคราะห์ลายนิ้วมือกลุ่มโจมตี)
+        if not member.bot and conf.get("raid_fingerprint", True):
+            is_fp, fp_reason = check_raid_fingerprint(guild, member)
+            if is_fp:
+                try:
+                    await member.ban(reason="[Raid Fingerprint] ลายนิ้วมือตรงกับกลุ่ม Raider โจมตีเซิร์ฟเวอร์")
+                    increment_security_stat(guild.id, "raid_fingerprint")
+                    await send_audit_log(guild, "🕵️ RAID FINGERPRINT DETECTED!",
+                        f"ตรวจพบลายพิมพ์กลุ่ม Raider บุกเซิร์ฟเวอร์!\n"
+                        f"ผู้ใช้: {member.mention} (`{member.id}`)\n"
+                        f"📌 **รูปแบบที่ตรวจพบ:**\n{fp_reason}\n"
+                        f"⚡ **สั่งแบนสมาชิกกลุ่ม Raid ทันที!**",
+                        discord.Color.dark_red())
+                    await dm_alert_owner(guild, "🕵️ RAID FINGERPRINT ATTACK!",
+                        f"ตรวจพบลายพิมพ์กลุ่ม Raider ทะลักเข้าดิส!\n"
+                        f"ผู้ใช้: {member.name} (`{member.id}`)\n"
+                        f"{fp_reason}\n"
+                        f"บอทได้สั่งแบนและสกัดกั้นเรียบร้อย")
+                    return
+                except Exception as e:
+                    print(f"Raid Fingerprint Ban Error: {e}")
+
+        # 2.9 🎭 Nickname Impersonation Guard on Join (ตรวจจับการปลอมชื่อตอนเข้า)
+        if not member.bot and conf.get("anti_impersonation", True):
+            is_imp, target = is_impersonating_admin(member)
+            if is_imp:
+                try:
+                    await member.edit(nick="[Reset-Impersonation]", reason="[Nickname Guard] ปลอมชื่อแอดมินหรือเจ้าของเซิร์ฟ")
+                    increment_security_stat(guild.id, "nickname_impersonation")
+                    await send_audit_log(guild, "🎭 NICKNAME IMPERSONATION GUARD!",
+                        f"ตรวจพบสมาชิกใหม่ {member.mention} (`{member.id}`) มีชื่อส่อแววเลียนแบบแอดมิน/Owner (`{target}`)\n"
+                        f"⚡ **ระบบได้ทำการรีเซ็ตชื่อเล่น (Nickname) ทันที!**",
+                        discord.Color.orange())
+                except Exception as e:
+                    print(f"Impersonation on join error: {e}")
 
         # 3. Check Member Join Flood (Raid Defense)
         now = time.time()
@@ -582,7 +832,9 @@ class SecurityEventsCog(commands.Cog):
         recent_joins_dict[guild.id] = [t for t in recent_joins_dict[guild.id] if now - t < 10]
         
         if len(recent_joins_dict[guild.id]) >= 5:
-            try: await member.ban(reason="[Auto Security] บอท Raid ทะลักเข้าดิส")
+            try: 
+                await member.ban(reason="[Auto Security] บอท Raid ทะลักเข้าดิส")
+                increment_security_stat(guild.id, "join_flood_raid")
             except: pass
 
             # 🔥 Auto-Panic Escalation: ถ้าสมาชิกทะลักเกิน 10 คนใน 5 วินาที -> ล็อกดาวน์อัตโนมัติ
@@ -598,11 +850,15 @@ class SecurityEventsCog(commands.Cog):
                             overwrite.connect = False
                             await channel.set_permissions(default_role, overwrite=overwrite)
                         except: pass
+                    increment_security_stat(guild.id, "auto_panic")
                     await send_audit_log(guild, "🔥 AUTO-PANIC ESCALATION!",
                         f"ตรวจพบสมาชิกทะลักเข้าดิสพร้อมกัน **{len(recent_joins_dict[guild.id])}** คนใน 10 วินาที!\n"
                         f"⚡ **สั่งล็อกดาวน์ (Global Panic) อัตโนมัติทันที!**\n"
                         f"💡 *แอดมินสามารถปลดล็อกดาวน์ได้ผ่าน Dashboard: ปุ่ม 🟢 ปลด Global Panic*",
                         discord.Color.dark_red())
+                    await dm_alert_owner(guild, "🔥 AUTO-PANIC ESCALATION!",
+                        f"ตรวจพบสมาชิกทะลักเข้าดิสพร้อมกัน **{len(recent_joins_dict[guild.id])}** คนใน 10 วินาที!\n"
+                        f"⚡ **สั่งล็อกดาวน์ (Global Panic) อัตโนมัติทันที!**")
             
             if now - last_raid_invite_purge[guild.id] > 20:
                 last_raid_invite_purge[guild.id] = now
@@ -673,24 +929,47 @@ class SecurityEventsCog(commands.Cog):
                             if role.permissions.administrator or role.permissions.manage_guild or role.permissions.kick_members:
                                 try: await kicker.remove_roles(role, reason="[Anti-Mass Kick] ตรวจพบการไล่เตะคนรัว")
                                 except: pass
+                        increment_security_stat(guild.id, "anti_mass_kick")
                         await send_audit_log(guild, "🚨 ANTI-MASS KICK ทำงาน!",
                             f"ทำการริบสิทธิ์ {kicker.mention} ทันที\nสาเหตุ: ไล่เตะสมาชิกเกิน 4 คนใน 10 วินาที",
                             discord.Color.red())
+                        await dm_alert_owner(guild, "🚨 ANTI-MASS KICK DETECTED!",
+                            f"ตรวจพบ {kicker.mention} (`{kicker.id}`) ไล่เตะสมาชิกเกิน 4 คนใน 10 วินาที\nบอทได้ทำการริบยศแอดมินทันที")
                         kick_timestamps[guild.id][kicker.id].clear()
                     break
         except: pass
 
     # ==========================================
-    # 🆕 ANTI-MASS TIMEOUT DETECTION
+    # 🆕 ANTI-MASS TIMEOUT & NICKNAME IMPERSONATION
     # ==========================================
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
-        # ตรวจจับ Timeout: ก่อนหน้าไม่มี timed_out แต่ตอนนี้มี
-        if before.timed_out_until == after.timed_out_until: return
-        if after.timed_out_until is None: return  # ปลด Timeout ไม่ต้องเช็ก
-
         guild = after.guild
         conf = get_config(guild.id)
+
+        # 1. 🎭 Nickname Impersonation Guard
+        if conf.get("anti_impersonation", True) and not after.bot:
+            name_changed = (before.nick != after.nick) or (before.name != after.name) or (before.display_name != after.display_name)
+            if name_changed:
+                is_imp, target = is_impersonating_admin(after)
+                if is_imp:
+                    try:
+                        await after.edit(nick="[Reset-Impersonation]", reason="[Nickname Guard] ปลอมชื่อแอดมินหรือเจ้าของเซิร์ฟ")
+                        increment_security_stat(guild.id, "nickname_impersonation")
+                        await send_audit_log(guild, "🎭 NICKNAME IMPERSONATION GUARD!",
+                            f"ตรวจพบ {after.mention} (`{after.id}`) เปลี่ยนชื่อเลียนแบบแอดมิน/Owner (`{target}`)\n"
+                            f"⚡ **ระบบได้ทำการรีเซ็ตชื่อเล่น (Nickname) ทันที!**",
+                            discord.Color.orange())
+                        try:
+                            await after.send(f"⚠️ **เตือนความปลอดภัย:** ไม่อนุญาตให้ตั้งชื่อเลียนแบบ Admin/Staff ในเซิร์ฟเวอร์ `{guild.name}` ระบบได้รีเซ็ตชื่อของคุณเรียบร้อย")
+                        except: pass
+                    except Exception as e:
+                        print(f"Impersonation edit error: {e}")
+
+        # 2. 🛑 Anti-Mass Timeout Check
+        if before.timed_out_until == after.timed_out_until: return
+        if after.timed_out_until is None: return
+
         if not conf.get("anti_mass_action"): return
 
         try:
@@ -705,9 +984,12 @@ class SecurityEventsCog(commands.Cog):
                             if role.permissions.administrator or role.permissions.manage_guild or role.permissions.moderate_members:
                                 try: await moderator.remove_roles(role, reason="[Anti-Mass Timeout] ตรวจพบการไล่จับ Timeout รัว")
                                 except: pass
+                        increment_security_stat(guild.id, "anti_mass_timeout")
                         await send_audit_log(guild, "🚨 ANTI-MASS TIMEOUT ทำงาน!",
                             f"ทำการริบสิทธิ์ {moderator.mention} ทันที\nสาเหตุ: จับ Timeout สมาชิกเกิน 4 คนใน 10 วินาที",
                             discord.Color.red())
+                        await dm_alert_owner(guild, "🚨 ANTI-MASS TIMEOUT DETECTED!",
+                            f"ตรวจพบ {moderator.mention} (`{moderator.id}`) จับ Timeout สมาชิกเกิน 4 คนใน 10 วินาที\nบอทได้ทำการริบยศแอดมินทันที")
                         timeout_timestamps[guild.id][moderator.id].clear()
                     break
         except: pass
@@ -763,13 +1045,177 @@ class SecurityEventsCog(commands.Cog):
                             try: await editor.remove_roles(role, reason="[Anti-Hijack] ริบสิทธิ์เนื่องจากแก้ไขข้อมูลเซิร์ฟเวอร์โดยไม่ได้รับอนุญาต")
                             except: pass
 
+                increment_security_stat(after.id, "anti_server_hijack")
                 await send_audit_log(after, "🏰 ANTI-SERVER HIJACK ทำงาน!",
                     f"ตรวจพบ {editor.mention} แก้ไขข้อมูลเซิร์ฟเวอร์:\n" + "\n".join(changes_desc) +
                     f"\n⚡ **ริบสิทธิ์แอดมินของผู้กระทำทันที!**",
                     discord.Color.dark_red())
+                await dm_alert_owner(after, "🏰 ANTI-SERVER HIJACK DETECTED!",
+                    f"ตรวจพบ {editor.mention} (`{editor.id}`) พยายามแก้ไขข้อมูลเซิร์ฟเวอร์\n" + "\n".join(changes_desc) +
+                    f"\nบอทได้ทำการคืนค่าและริบยศผู้กระทำทันที!")
                 break
         except Exception as e:
             print(f"Anti-Hijack Error: {e}")
+
+    # ==========================================
+    # 🏠 ANTI-CHANNEL TAMPERING GUARD
+    # ==========================================
+    @commands.Cog.listener()
+    async def on_guild_channel_update(self, before, after):
+        guild = after.guild
+        conf = get_config(guild.id)
+        if not conf.get("anti_nuke", True): return
+
+        tampered = (
+            before.name != after.name or 
+            getattr(before, 'topic', None) != getattr(after, 'topic', None) or
+            getattr(before, 'slowmode_delay', None) != getattr(after, 'slowmode_delay', None) or
+            getattr(before, 'nsfw', None) != getattr(after, 'nsfw', None) or
+            before.overwrites != after.overwrites
+        )
+        if not tampered: return
+
+        try:
+            async for entry in guild.audit_logs(action=discord.AuditLogAction.channel_update, limit=1):
+                if entry.target.id == after.id:
+                    actor = entry.user
+                    if not actor or actor.bot or actor.id == guild.owner_id: return
+                    is_wl = isinstance(actor, discord.Member) and any(r.id in get_whitelist(guild.id) for r in actor.roles)
+                    if is_wl: return
+
+                    now = time.time()
+                    channel_edit_timestamps[guild.id][actor.id].append(now)
+                    channel_edit_timestamps[guild.id][actor.id] = [t for t in channel_edit_timestamps[guild.id][actor.id] if now - t < 10]
+
+                    if len(channel_edit_timestamps[guild.id][actor.id]) >= 4:
+                        if isinstance(actor, discord.Member):
+                            for role in actor.roles:
+                                if role.permissions.administrator or role.permissions.manage_channels or role.permissions.manage_guild:
+                                    try: await actor.remove_roles(role, reason="[Anti-Channel Tampering] ดัดแปลงห้องรัวเกินกำหนด")
+                                    except: pass
+                        increment_security_stat(guild.id, "channel_tampering")
+                        await send_audit_log(guild, "🚨 ANTI-CHANNEL TAMPERING ทำงาน!", 
+                            f"ตรวจพบ {actor.mention} แก้ไขข้อมูลห้อง {after.mention} รัวเกินกำหนด (> 4 ครั้งใน 10 วินาที)\n⚡ **ทำการริบสิทธิ์ทันที!**", 
+                            discord.Color.red())
+                        await dm_alert_owner(guild, "🚨 ANTI-CHANNEL TAMPERING ATTACK!", 
+                            f"ผู้ใช้ {actor.mention} (`{actor.id}`) ดัดแปลงห้องรัวในเซิร์ฟเวอร์ (> 4 ครั้ง/10 วิ)\nบอทได้ทำการริบยศแอดมินทันที")
+                        channel_edit_timestamps[guild.id][actor.id].clear()
+                    break
+        except Exception as e:
+            print(f"Channel Update Check Error: {e}")
+
+    # ==========================================
+    # 💀 ANTI-EMOJI NUKE GUARD
+    # ==========================================
+    @commands.Cog.listener()
+    async def on_guild_emojis_update(self, guild, before, after):
+        if len(after) >= len(before): return
+        conf = get_config(guild.id)
+        if not conf.get("anti_nuke", True): return
+
+        try:
+            async for entry in guild.audit_logs(action=discord.AuditLogAction.emoji_delete, limit=1):
+                actor = entry.user
+                if not actor or actor.bot or actor.id == guild.owner_id: return
+                is_wl = isinstance(actor, discord.Member) and any(r.id in get_whitelist(guild.id) for r in actor.roles)
+                if is_wl: return
+
+                now = time.time()
+                emoji_delete_timestamps[guild.id][actor.id].append(now)
+                emoji_delete_timestamps[guild.id][actor.id] = [t for t in emoji_delete_timestamps[guild.id][actor.id] if now - t < 10]
+
+                if len(emoji_delete_timestamps[guild.id][actor.id]) >= 3:
+                    if isinstance(actor, discord.Member):
+                        for role in actor.roles:
+                            if role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_expressions:
+                                try: await actor.remove_roles(role, reason="[Anti-Emoji Nuke] ลบอิโมจิรัว")
+                                except: pass
+                    increment_security_stat(guild.id, "emoji_nuke")
+                    await send_audit_log(guild, "🚨 ANTI-EMOJI NUKE ทำงาน!", 
+                        f"ตรวจพบ {actor.mention} ลบอิโมจิรัวเกินกำหนด (>= 3 ตัวใน 10 วินาที)\n⚡ **ทำการริบสิทธิ์ทันที!**", 
+                        discord.Color.red())
+                    await dm_alert_owner(guild, "🚨 ANTI-EMOJI NUKE DETECTED!", 
+                        f"ผู้ใช้ {actor.mention} (`{actor.id}`) ไล่ลบอิโมจิในเซิร์ฟเวอร์\nบอทได้ทำการริบยศทันที")
+                    emoji_delete_timestamps[guild.id][actor.id].clear()
+                break
+        except Exception as e:
+            print(f"Emoji Update Error: {e}")
+
+    # ==========================================
+    # 💀 ANTI-STICKER NUKE GUARD
+    # ==========================================
+    @commands.Cog.listener()
+    async def on_guild_stickers_update(self, guild, before, after):
+        if len(after) >= len(before): return
+        conf = get_config(guild.id)
+        if not conf.get("anti_nuke", True): return
+
+        try:
+            async for entry in guild.audit_logs(action=discord.AuditLogAction.sticker_delete, limit=1):
+                actor = entry.user
+                if not actor or actor.bot or actor.id == guild.owner_id: return
+                is_wl = isinstance(actor, discord.Member) and any(r.id in get_whitelist(guild.id) for r in actor.roles)
+                if is_wl: return
+
+                now = time.time()
+                sticker_delete_timestamps[guild.id][actor.id].append(now)
+                sticker_delete_timestamps[guild.id][actor.id] = [t for t in sticker_delete_timestamps[guild.id][actor.id] if now - t < 10]
+
+                if len(sticker_delete_timestamps[guild.id][actor.id]) >= 3:
+                    if isinstance(actor, discord.Member):
+                        for role in actor.roles:
+                            if role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_expressions:
+                                try: await actor.remove_roles(role, reason="[Anti-Sticker Nuke] ลบสติกเกอร์รัว")
+                                except: pass
+                    increment_security_stat(guild.id, "sticker_nuke")
+                    await send_audit_log(guild, "🚨 ANTI-STICKER NUKE ทำงาน!", 
+                        f"ตรวจพบ {actor.mention} ลบสติกเกอร์รัวเกินกำหนด (>= 3 ตัวใน 10 วินาที)\n⚡ **ทำการริบสิทธิ์ทันที!**", 
+                        discord.Color.red())
+                    await dm_alert_owner(guild, "🚨 ANTI-STICKER NUKE DETECTED!", 
+                        f"ผู้ใช้ {actor.mention} (`{actor.id}`) ไล่ลบสติกเกอร์ในเซิร์ฟเวอร์\nบอทได้ทำการริบยศทันที")
+                    sticker_delete_timestamps[guild.id][actor.id].clear()
+                break
+        except Exception as e:
+            print(f"Sticker Update Error: {e}")
+
+    # ==========================================
+    # 🔓 ANTI-UNBAN BYPASS GUARD
+    # ==========================================
+    @commands.Cog.listener()
+    async def on_member_unban(self, guild: discord.Guild, user: discord.User):
+        conf = get_config(guild.id)
+        if not conf.get("anti_unban_guard", True): return
+
+        try:
+            async for entry in guild.audit_logs(action=discord.AuditLogAction.unban, limit=1):
+                if entry.target.id == user.id:
+                    actor = entry.user
+                    if not actor or actor.bot or actor.id == guild.owner_id: return
+                    is_wl = isinstance(actor, discord.Member) and any(r.id in get_whitelist(guild.id) for r in actor.roles)
+                    if is_wl: return
+
+                    # Actor is not owner or whitelisted! Unban bypass detected!
+                    try:
+                        await guild.ban(user, reason="[Anti-Unban Bypass] ปลดแบนโดยแอดมินที่ไม่ได้รับอนุญาต")
+                    except: pass
+
+                    if isinstance(actor, discord.Member):
+                        for role in actor.roles:
+                            if role.permissions.administrator or role.permissions.ban_members or role.permissions.manage_guild:
+                                try: await actor.remove_roles(role, reason="[Anti-Unban Bypass] ริบสิทธิ์เนื่องจากปลดแบนโดยพลการ")
+                                except: pass
+
+                    increment_security_stat(guild.id, "anti_unban_bypass")
+                    await send_audit_log(guild, "🔓 ANTI-UNBAN BYPASS ทำงาน!", 
+                        f"ตรวจพบ {actor.mention} แอบปลดแบนสมาชิก {user.mention} (`{user.id}`)\n"
+                        f"⚡ **ทำการแบนสมาชิกคนดังกล่าวกลับทันที + ริบสิทธิ์แอดมินของผู้ปลดแบน!**", 
+                        discord.Color.dark_red())
+                    await dm_alert_owner(guild, "🔓 ANTI-UNBAN BYPASS DETECTED!", 
+                        f"ผู้ใช้ {actor.mention} (`{actor.id}`) แอบปลดแบน {user.name} (`{user.id}`) โดยไม่ได้รับอนุญาต\n"
+                        f"บอทได้ทำการแบนผู้ใช้กลับและริบยศของผู้กระทำแล้ว")
+                    break
+        except Exception as e:
+            print(f"Anti-Unban Bypass Error: {e}")
 
     @commands.Cog.listener()
     async def on_thread_create(self, thread: discord.Thread):
@@ -785,6 +1231,7 @@ class SecurityEventsCog(commands.Cog):
             try:
                 await thread.delete(reason="[Anti-Thread Raid] สแปมสร้างห้องย่อย/Forum ถี่เกินกำหนด")
                 await owner.timeout(datetime.timedelta(minutes=10), reason="Anti-Thread Raid")
+                increment_security_stat(guild.id, "thread_raid")
                 await send_audit_log(guild, "🧵 สกัดกั้น Thread/Forum Raid!", f"ลบห้องย่อยสแปม และจับ {owner.mention} Timeout 10 นาที (สร้างเกิน 3 ห้องใน 10 วิ)", discord.Color.red())
                 thread_create_timestamps[guild.id][owner.id].clear()
             except: pass
@@ -814,7 +1261,9 @@ class SecurityEventsCog(commands.Cog):
                         except:
                             ban_info = f"\n⚠️ **ผู้สร้าง:** {creator.mention}"
 
+                        increment_security_stat(guild.id, "webhook_guard")
                         await send_audit_log(guild, "🚨 สกัดการสร้าง Webhook ไม่อนุญาต!", f"ตรวจพบ {creator.mention} สร้าง Webhook ใน {channel.mention}\n⚡ **ทำการทำลาย Webhook ทันที!**{ban_info}", discord.Color.dark_red())
+                        await dm_alert_owner(guild, "🚨 สกัดการสร้าง Webhook ไม่อนุญาต!", f"ตรวจพบ {creator.mention} (`{creator.id}`) สร้าง Webhook ใน {channel.mention}\nบอทได้ทำลาย Webhook และสั่งแบนเรียบร้อย")
                         return
         except Exception as e:
             print(f"Webhook Audit Check Error: {e}")
@@ -828,6 +1277,7 @@ class SecurityEventsCog(commands.Cog):
                 webhooks = await channel.webhooks()
                 for wh in webhooks:
                     await wh.delete(reason="[Webhook Guard] สกัดการสร้าง Webhook สแปมเพื่อโจมตี")
+                increment_security_stat(guild.id, "webhook_guard")
                 await send_audit_log(guild, "🔗 Webhook Guard ทำงาน", f"สกัดกั้นการสแปม Webhook ใน {channel.mention} และเคลียร์ทิ้งทั้งหมด", discord.Color.red())
                 webhook_update_timestamps[guild.id].clear()
             except: pass
@@ -849,26 +1299,112 @@ class SecurityEventsCog(commands.Cog):
             try:
                 await member.move_to(None)
                 await member.timeout(datetime.timedelta(minutes=10), reason="Voice Spam / Channel Hopping")
+                increment_security_stat(guild_id, "voice_spam")
                 await send_audit_log(member.guild, "🎙️ สกัด Voice Spam", f"{member.mention} ถูกจับ Timeout โทษฐานกวนประสาทเข้าออกห้องเสียงถี่เกินไป (เกิน 5 ครั้ง/10 วิ)", discord.Color.red())
                 voice_join_timestamps[guild_id][member.id].clear()
             except: pass
 
+    # ==========================================
+    # 🔐 ANTI-PERMISSION ESCALATION & MASS ROLE EDIT
+    # ==========================================
     @commands.Cog.listener()
-    async def on_guild_role_update(self, before, after):
-        if before.permissions == after.permissions: return
-        conf = get_config(after.guild.id)
-        if not conf["enforce_permissions"]: return
+    async def on_guild_role_update(self, before: discord.Role, after: discord.Role):
+        guild = after.guild
+        conf = get_config(guild.id)
 
-        dangerous = after.permissions.administrator or after.permissions.manage_guild
-        if dangerous and not (before.permissions.administrator or before.permissions.manage_guild):
-            if after.id not in get_whitelist(after.guild.id):
+        # 1. 🔐 Anti-Permission Escalation Guard (ดักจับการแอบเปิดสิทธิ์อันตราย)
+        if conf.get("enforce_permissions", True) and before.permissions != after.permissions:
+            DANGEROUS_PERMS = {
+                "administrator": "Administrator",
+                "manage_guild": "Manage Server",
+                "ban_members": "Ban Members",
+                "kick_members": "Kick Members",
+                "manage_channels": "Manage Channels",
+                "manage_roles": "Manage Roles",
+                "manage_webhooks": "Manage Webhooks",
+                "mention_everyone": "Mention Everyone",
+                "manage_expressions": "Manage Expressions"
+            }
+            escalated_perms = []
+            for perm_attr, perm_name in DANGEROUS_PERMS.items():
+                was_on = getattr(before.permissions, perm_attr, False)
+                now_on = getattr(after.permissions, perm_attr, False)
+                if not was_on and now_on:
+                    escalated_perms.append(perm_name)
+
+            if escalated_perms and after.id not in get_whitelist(guild.id):
                 try:
-                    perms = after.permissions
-                    perms.administrator = False
-                    perms.manage_guild = False
-                    await after.edit(permissions=perms, reason="[Permission Enforcer] ริบสิทธิ์อันตราย")
-                    await send_audit_log(after.guild, "🛡️ Perm Enforcer", f"ดึงสิทธิ์แอดมินออกจากยศ {after.mention} ทันที (ไม่ได้อยู่ใน Whitelist)", discord.Color.orange())
-                except: pass
+                    async for entry in guild.audit_logs(action=discord.AuditLogAction.role_update, limit=1):
+                        if entry.target.id == after.id:
+                            editor = entry.user
+                            if editor and editor.id != guild.owner_id:
+                                is_wl = isinstance(editor, discord.Member) and any(r.id in get_whitelist(guild.id) for r in editor.roles)
+                                if not is_wl:
+                                    try:
+                                        await after.edit(permissions=before.permissions, reason="[Anti-Permission Escalation] คืนค่าสิทธิ์อันตราย")
+                                    except: pass
+
+                                    if isinstance(editor, discord.Member):
+                                        for role in editor.roles:
+                                            if (role.permissions.administrator or role.permissions.manage_roles or 
+                                                role.permissions.manage_guild or role.permissions.ban_members):
+                                                try: await editor.remove_roles(role, reason="[Anti-Permission Escalation] ริบสิทธิ์เนื่องจากเปิดสิทธิ์อันตรายโดยไม่ได้รับอนุญาต")
+                                                except: pass
+
+                                    increment_security_stat(guild.id, "permission_escalation")
+                                    perms_list = ", ".join(escalated_perms)
+                                    await send_audit_log(guild, "🔐 ANTI-PERMISSION ESCALATION ทำงาน!",
+                                        f"ตรวจพบ {editor.mention} พยายามเปิดสิทธิ์อันตรายให้กับยศ {after.mention}:\n"
+                                        f"📌 **สิทธิ์ที่พยายามเปิด:** `{perms_list}`\n"
+                                        f"⚡ **คืนค่าสิทธิ์ยศทันที + ริบสิทธิ์แอดมินของผู้กระทำ!**",
+                                        discord.Color.dark_red())
+                                    await dm_alert_owner(guild, "🔐 PERMISSION ESCALATION ATTACK!",
+                                        f"ตรวจพบ {editor.mention} (`{editor.id}`) พยายามเปิดสิทธิ์อันตราย ({perms_list}) ให้ยศ `{after.name}`\n"
+                                        f"บอทได้คืนค่าสิทธิ์และริบยศผู้กระทำทันที!")
+                            break
+                except Exception as e:
+                    print(f"Permission Escalation Error: {e}")
+
+        # 2. 🛑 Anti-Mass Role Edit Guard (ดักจับการไล่แก้ไขยศรัว)
+        if conf.get("anti_nuke", True):
+            role_changed = (
+                before.name != after.name or
+                before.color != after.color or
+                before.hoist != after.hoist or
+                before.mentionable != after.mentionable or
+                before.permissions != after.permissions
+            )
+            if role_changed:
+                try:
+                    async for entry in guild.audit_logs(action=discord.AuditLogAction.role_update, limit=1):
+                        if entry.target.id == after.id:
+                            editor = entry.user
+                            if not editor or editor.bot or editor.id == guild.owner_id: return
+                            is_wl = isinstance(editor, discord.Member) and any(r.id in get_whitelist(guild.id) for r in editor.roles)
+                            if is_wl: return
+
+                            now = time.time()
+                            role_edit_timestamps[guild.id][editor.id].append(now)
+                            role_edit_timestamps[guild.id][editor.id] = [t for t in role_edit_timestamps[guild.id][editor.id] if now - t < 10]
+
+                            if len(role_edit_timestamps[guild.id][editor.id]) >= 4:
+                                if isinstance(editor, discord.Member):
+                                    for role in editor.roles:
+                                        if role.permissions.administrator or role.permissions.manage_roles or role.permissions.manage_guild:
+                                            try: await editor.remove_roles(role, reason="[Anti-Mass Role Edit] แก้ไขยศรัวเกินกำหนด")
+                                            except: pass
+                                increment_security_stat(guild.id, "mass_role_edit")
+                                await send_audit_log(guild, "🚨 ANTI-MASS ROLE EDIT ทำงาน!",
+                                    f"ตรวจพบ {editor.mention} แก้ไขยศรัวเกินกำหนด (> 4 ครั้งใน 10 วินาที)\n"
+                                    f"⚡ **ทำการริบสิทธิ์ทันที!**",
+                                    discord.Color.red())
+                                await dm_alert_owner(guild, "🚨 MASS ROLE EDIT DETECTED!",
+                                    f"ผู้ใช้ {editor.mention} (`{editor.id}`) ไล่แก้ไขยศในเซิร์ฟเวอร์ (> 4 ครั้ง/10 วิ)\n"
+                                    f"บอทได้ทำการริบยศทันที")
+                                role_edit_timestamps[guild.id][editor.id].clear()
+                            break
+                except Exception as e:
+                    print(f"Mass Role Edit Error: {e}")
 
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
@@ -925,8 +1461,9 @@ class SecurityEventsCog(commands.Cog):
                         try:
                             await message.author.timeout(datetime.timedelta(minutes=10), reason="[Anti-Zalgo] ส่งข้อความ Zalgo/Crash Text")
                         except: pass
+                        increment_security_stat(message.guild.id, "anti_zalgo")
                         await send_audit_log(message.guild, "🔣 Anti-Zalgo ทำงาน!",
-                            f"ลบข้อความ Zalgo/Crash Text จาก {message.author.mention}\\n"
+                            f"ลบข้อความ Zalgo/Crash Text จาก {message.author.mention}\n"
                             f"⏰ **Timeout 10 นาที**",
                             discord.Color.orange())
                         return
@@ -971,6 +1508,7 @@ class SecurityEventsCog(commands.Cog):
                             ban_info = f"\n🔨 **สั่งแบนผู้สร้าง Webhook ทันที:** {creator_user.mention} (`{creator_user.id}`)"
                         except: pass
 
+                    increment_security_stat(g_id, "webhook_attack")
                     await send_audit_log(
                         message.guild, 
                         "🚨 สกัดกั้น WEBHOOK SPAM ATTACK!", 
@@ -978,6 +1516,9 @@ class SecurityEventsCog(commands.Cog):
                         f"⚡ **ทำการลบ Webhook ทิ้งและกวาดลบข้อความค้างทั้งหมด!**{ban_info}", 
                         discord.Color.dark_red()
                     )
+                    await dm_alert_owner(message.guild, "🚨 WEBHOOK SPAM ATTACK BLOCKED!",
+                        f"ตรวจพบการยิงสแปมผ่าน Webhook ใน {message.channel.mention}\n"
+                        f"บอทได้ทำการลบ Webhook และกวาดล้างข้อความทั้งหมดแล้ว!{ban_info}")
                     webhook_msg_timestamps[g_id][wh_id].clear()
                 except Exception as e:
                     print(f"Webhook Attack Defense Error: {e}")
@@ -988,7 +1529,9 @@ class SecurityEventsCog(commands.Cog):
                 await safe_delete(message)
                 try: 
                     await message.author.ban(reason="[Honeypot Trap] บอทสแปมติดกับดักล่องหน")
+                    increment_security_stat(message.guild.id, "honeypot_trap")
                     await send_audit_log(message.guild, "🍯 กับดักล่อบอททำงาน!", f"ผู้ใช้ {message.author.mention} ถูกแบนทันที เนื่องจากบุกรุกห้องล่องหนที่คนปกติมองไม่เห็น", discord.Color.dark_red())
+                    await dm_alert_owner(message.guild, "🍯 HONEYPOT TRAP TRIGGERED!", f"ผู้ใช้ {message.author.mention} (`{message.author.id}`) ถูกแบนทันที เนื่องจากบุกรุกห้องล่องหน (Honeypot)")
                 except: pass
             return
 
@@ -997,6 +1540,7 @@ class SecurityEventsCog(commands.Cog):
         if content and re.search(DISCORD_TOKEN_REGEX, content):
             try:
                 await safe_delete(message)
+                increment_security_stat(message.guild.id, "token_leak")
                 await send_audit_log(message.guild, "🚨 ตรวจพบ DISCORD BOT TOKEN LEAK!", f"ผู้ใช้ {message.author.mention} โพสต์ Discord Bot Token ใน {message.channel.mention}\n*ลบข้อความทันทีเพื่อป้องกันบอทถูกแฮก*", discord.Color.dark_red())
                 try: await message.author.send("⚠️ **คำเตือนความปลอดภัย:** คุณได้ส่ง Discord Bot Token ในช่องสาธารณะ! ระบบได้ทำการลบข้อความนั้นทันทีเพื่อความปลอดภัย กรุณาไปที่ Discord Developer Portal และสั่ง Reset Token ทันที")
                 except: pass
@@ -1026,6 +1570,7 @@ class SecurityEventsCog(commands.Cog):
                     if code not in guild_invites:
                         try:
                             await safe_delete(message)
+                            increment_security_stat(message.guild.id, "anti_invite")
                             await send_audit_log(message.guild, "🔗 Anti-Invite / OAuth2 Guard", f"ลบลิงก์เชิญเซิร์ฟเวอร์/OAuth2 จาก {user.mention} ในช่อง {message.channel.mention}\nข้อความ: `{content}`", discord.Color.orange())
                             try: await user.send("⚠️ **เตือนความปลอดภัย:** ไม่อนุญาตให้โพสต์ลิงก์เชิญเข้า Discord หรือลิงก์ OAuth2 ดึงสิทธิ์ในเซิร์ฟเวอร์นี้")
                             except: pass
@@ -1046,6 +1591,7 @@ class SecurityEventsCog(commands.Cog):
                                             await safe_delete(message)
                                             try: 
                                                 await user.timeout(datetime.timedelta(hours=1), reason="OCR: ตรวจพบข้อความ/ลิงก์อันตรายในรูปภาพ")
+                                                increment_security_stat(message.guild.id, "image_scanner")
                                                 await send_audit_log(message.guild, "🖼️ OCR สกัดกั้นภาพสแปม", f"ตรวจพบเนื้อหาอันตรายในรูปภาพจาก {user.mention}\nข้อความที่ถอดได้: `{extracted_text}`", discord.Color.red())
                                             except: pass
                                             return
@@ -1056,6 +1602,7 @@ class SecurityEventsCog(commands.Cog):
                     await safe_delete(message)
                     try:
                         await user.timeout(datetime.timedelta(hours=1), reason="Self-Bot Detection: ส่งข้อความยาวเร็วกว่ามนุษย์")
+                        increment_security_stat(message.guild.id, "self_bot")
                         await send_audit_log(message.guild, "🤖 Self-Bot ตรวจพบ!", f"{user.mention} ถูกจับ Mute เนื่องจากพิมพ์ข้อความยาวกว่า 150 ตัวอักษรภายในเสี้ยววินาที", discord.Color.red())
                     except: pass
                     return
@@ -1077,43 +1624,81 @@ class SecurityEventsCog(commands.Cog):
                     await safe_delete(message)
                     try: 
                         await user.timeout(datetime.timedelta(hours=2), reason="Anti-Dox: เปิดเผยข้อมูลส่วนตัว/สำคัญ")
+                        increment_security_stat(message.guild.id, "anti_dox")
                         await send_audit_log(message.guild, "👁️ ANTI-DOX ทำงาน", f"สกัดกั้นการเปิดเผยข้อมูลสำคัญ (เบอร์/IP/เลขบัตร) จาก {user.mention}", discord.Color.red())
                     except: pass
                     return
 
             if conf["anti_mention"] and (len(message.mentions) + len(message.role_mentions)) >= 5:
                 await safe_delete(message)
-                try: await user.timeout(datetime.timedelta(hours=1))
+                try: 
+                    await user.timeout(datetime.timedelta(hours=1))
+                    increment_security_stat(message.guild.id, "anti_mention")
                 except: pass
                 return
 
-            has_link = re.search(URL_REGEX, content, re.IGNORECASE) if content else False
-            if conf["phishing_api"] and has_link:
-                urls = re.findall(URL_REGEX, content, re.IGNORECASE)
-                for url in urls:
-                    if await check_phishing_api(url):
-                        await safe_delete(message)
-                        try: await user.ban(reason="ส่งลิงก์สแกม/ลิงก์ย่อต้องสงสัย")
-                        except: pass
-                        return
+            # 🌐 Enhanced Phishing & Typosquatting Detection
+            if conf.get("phishing_api"):
+                is_typo, typo_reason = is_typosquatting(content) if content else (False, "")
+                has_link = re.search(URL_REGEX, content, re.IGNORECASE) if content else False
+                has_scam = False
+                scam_reason = ""
+                if is_typo:
+                    has_scam = True
+                    scam_reason = typo_reason
+                elif has_link:
+                    urls = re.findall(URL_REGEX, content, re.IGNORECASE)
+                    for url in urls:
+                        if await check_phishing_api(url):
+                            has_scam = True
+                            scam_reason = f"ตรวจพบลิงก์ฟิชชิ่ง/สแกม: `{url}`"
+                            break
+
+                if has_scam:
+                    await safe_delete(message)
+                    try: 
+                        await user.ban(reason=f"[Phishing Guard] {scam_reason}")
+                        ban_status = "🔨 **สั่งแบนผู้ใช้ทันที**"
+                    except:
+                        try:
+                            await user.timeout(datetime.timedelta(hours=24), reason=scam_reason)
+                            ban_status = "⏰ **Timeout 24 ชั่วโมง**"
+                        except:
+                            ban_status = "⚠️ **ลบข้อความสกัดกั้น**"
+
+                    increment_security_stat(message.guild.id, "phishing_typosquatting")
+                    await send_audit_log(message.guild, "🌐 สกัดกั้น Phishing / Typosquatting!",
+                        f"ผู้ใช้: {user.mention} (`{user.id}`)\n"
+                        f"ช่อง: {message.channel.mention}\n"
+                        f"สาเหตุ: {scam_reason}\n"
+                        f"{ban_status}",
+                        discord.Color.dark_red())
+                    await dm_alert_owner(message.guild, "🌐 PHISHING ATTACK DETECTED!",
+                        f"ตรวจพบ {user.mention} (`{user.id}`) ส่งลิงก์ Phishing ใน {message.channel.mention}\n"
+                        f"สาเหตุ: {scam_reason}\n{ban_status}")
+                    return
 
             if conf["malware"] and message.attachments:
                 for att in message.attachments:
                     if att.filename.lower().endswith(DANGEROUS_EXTENSIONS):
                         await safe_delete(message)
+                        increment_security_stat(message.guild.id, "malware")
                         return
 
             if conf["ai"] and content:
                 is_mal, _ = await analyze_content_with_ai(content)
                 if is_mal:
                     await safe_delete(message)
+                    increment_security_stat(message.guild.id, "ai_filter")
                     return
 
             user_message_timestamps[user.id].append(now)
             user_message_timestamps[user.id] = [t for t in user_message_timestamps[user.id] if now - t < SPAM_INTERVAL]
             if len(user_message_timestamps[user.id]) >= SPAM_THRESHOLD:
                 await safe_delete(message)
-                try: await user.timeout(datetime.timedelta(minutes=10))
+                try: 
+                    await user.timeout(datetime.timedelta(minutes=10))
+                    increment_security_stat(message.guild.id, "chat_spam")
                 except: pass
                 return
 

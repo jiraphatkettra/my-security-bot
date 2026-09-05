@@ -30,7 +30,8 @@ ALLOWED_CONFIG_KEYS = {
     "anti_vpn", "ghost_ping_guard", "owner_pin", "anti_invite", "verify_domain",
     "suspect_scan", "global_panic",
     "anti_bot_add", "anti_mass_action", "anti_server_hijack",
-    "auto_panic_escalation", "anti_zalgo"
+    "auto_panic_escalation", "anti_zalgo",
+    "anti_unban_guard", "anti_impersonation", "raid_fingerprint", "dm_owner_alert"
 }
 
 def init_db():
@@ -53,6 +54,12 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS ip_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER, user_id INTEGER, ip_address TEXT, user_agent TEXT, timestamp REAL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS banned_ips (ip_address TEXT PRIMARY KEY, reason TEXT, timestamp REAL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS server_snapshots (guild_id INTEGER PRIMARY KEY, timestamp REAL, data TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS security_stats (
+                    guild_id INTEGER, 
+                    event_type TEXT, 
+                    count INTEGER DEFAULT 0, 
+                    last_triggered REAL, 
+                    PRIMARY KEY (guild_id, event_type))''')
     conn.commit()
     
     # อัปเกรดฐานข้อมูลรองรับฟีเจอร์ใหม่
@@ -64,7 +71,8 @@ def init_db():
         ("anti_vpn", 1), ("ghost_ping_guard", 1), ("anti_invite", 1), ("suspect_scan", 1),
         ("global_panic", 0),
         ("anti_bot_add", 1), ("anti_mass_action", 1), ("anti_server_hijack", 1),
-        ("auto_panic_escalation", 1), ("anti_zalgo", 1)
+        ("auto_panic_escalation", 1), ("anti_zalgo", 1),
+        ("anti_unban_guard", 1), ("anti_impersonation", 1), ("raid_fingerprint", 1), ("dm_owner_alert", 1)
     ]
     for col, default in columns:
         try: c.execute(f"ALTER TABLE guild_config ADD COLUMN {col} INTEGER DEFAULT {default}")
@@ -84,7 +92,7 @@ def get_config(guild_id: int):
     if guild_id in config_cache: return config_cache[guild_id]
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT log_channel_id, malware_filter, ai_filter, strike_system, anti_nuke, anti_mention, phishing_api, quarantine_role_id, voice_anti_raid, enforce_permissions, anti_dox, honeypot_channel_id, self_bot, webhook_guard, auto_purge, image_scanner, verify_channel_id, verify_role_id, min_account_age_days, ip_ban_guard, anti_vpn, ghost_ping_guard, owner_pin, anti_invite, verify_domain, suspect_scan, global_panic, anti_bot_add, anti_mass_action, anti_server_hijack, auto_panic_escalation, anti_zalgo FROM guild_config WHERE guild_id = ?", (guild_id,))
+    c.execute("SELECT log_channel_id, malware_filter, ai_filter, strike_system, anti_nuke, anti_mention, phishing_api, quarantine_role_id, voice_anti_raid, enforce_permissions, anti_dox, honeypot_channel_id, self_bot, webhook_guard, auto_purge, image_scanner, verify_channel_id, verify_role_id, min_account_age_days, ip_ban_guard, anti_vpn, ghost_ping_guard, owner_pin, anti_invite, verify_domain, suspect_scan, global_panic, anti_bot_add, anti_mass_action, anti_server_hijack, auto_panic_escalation, anti_zalgo, anti_unban_guard, anti_impersonation, raid_fingerprint, dm_owner_alert FROM guild_config WHERE guild_id = ?", (guild_id,))
     row = c.fetchone()
     conn.close()
     if row:
@@ -105,7 +113,11 @@ def get_config(guild_id: int):
             "anti_mass_action": bool(row[28] if len(row) > 28 and row[28] is not None else 1),
             "anti_server_hijack": bool(row[29] if len(row) > 29 and row[29] is not None else 1),
             "auto_panic_escalation": bool(row[30] if len(row) > 30 and row[30] is not None else 1),
-            "anti_zalgo": bool(row[31] if len(row) > 31 and row[31] is not None else 1)
+            "anti_zalgo": bool(row[31] if len(row) > 31 and row[31] is not None else 1),
+            "anti_unban_guard": bool(row[32] if len(row) > 32 and row[32] is not None else 1),
+            "anti_impersonation": bool(row[33] if len(row) > 33 and row[33] is not None else 1),
+            "raid_fingerprint": bool(row[34] if len(row) > 34 and row[34] is not None else 1),
+            "dm_owner_alert": bool(row[35] if len(row) > 35 and row[35] is not None else 1)
         }
     else:
         conf = {
@@ -118,7 +130,8 @@ def get_config(guild_id: int):
             "anti_vpn": True, "ghost_ping_guard": True, "owner_pin": "123456", "anti_invite": True, "verify_domain": "",
             "suspect_scan": True, "global_panic": False,
             "anti_bot_add": True, "anti_mass_action": True, "anti_server_hijack": True,
-            "auto_panic_escalation": True, "anti_zalgo": True
+            "auto_panic_escalation": True, "anti_zalgo": True,
+            "anti_unban_guard": True, "anti_impersonation": True, "raid_fingerprint": True, "dm_owner_alert": True
         }
         update_config(guild_id, "log_channel_id", DEFAULT_LOG_CHANNEL_ID)
         update_config(guild_id, "honeypot_channel_id", DEFAULT_HONEYPOT_CHANNEL_ID)
@@ -282,6 +295,35 @@ async def send_audit_log(guild: discord.Guild, title: str, description: str, col
         embed = discord.Embed(title=title, description=description, color=color, timestamp=datetime.datetime.now())
         try: await channel.send(embed=embed)
         except: pass
+
+def increment_security_stat(guild_id: int, event_type: str):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        now = time.time()
+        c.execute("""
+            INSERT INTO security_stats (guild_id, event_type, count, last_triggered)
+            VALUES (?, ?, 1, ?)
+            ON CONFLICT(guild_id, event_type) DO UPDATE SET
+                count = count + 1,
+                last_triggered = excluded.last_triggered
+        """, (guild_id, event_type, now))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error incrementing security stat: {e}")
+
+def get_security_stats(guild_id: int) -> dict:
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT event_type, count, last_triggered FROM security_stats WHERE guild_id = ?", (guild_id,))
+        rows = c.fetchall()
+        conn.close()
+        return {row[0]: {"count": row[1], "last_triggered": row[2]} for row in rows}
+    except Exception as e:
+        print(f"Error getting security stats: {e}")
+        return {}
 
 class DatabaseCog(commands.Cog):
     def __init__(self, bot):
