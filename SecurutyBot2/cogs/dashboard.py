@@ -55,108 +55,86 @@ def calculate_security_score(conf: dict) -> int:
 STRINGS = {
     "th": {
         "sec_engine": "ระบบป้องกันหลัก",
-        "hardening": "ระบบขั้นสูง (2026)",
+        "hardening": "ระบบป้องกันขั้นสูง",
         "verify_access": "ระบบยืนยันตัวตน",
         "member_controls": "จัดการสมาชิก",
-        "configuration": "ตั้งค่าระบบ",
+        "configuration": "การตั้งค่าทั่วไป",
         "backup_restore": "สำรองข้อมูล",
         "lang_toggle": "Language: TH",
         "back": "← กลับ",
-        "main_title": "ศูนย์ควบคุมความปลอดภัย",
-        "main_desc": "ระบบรักษาความปลอดภัยระดับองค์กร • นโยบาย Zero-Trust\n──────────────────────────────",
-        "soc_telemetry": "มอนิเตอร์สถานะ & Telemetry แบบสด",
-        "incident_timeline": "บันทึกเหตุการณ์สกัดกั้นล่าสุด (Live Feed)",
-        "threat_analytics": "สถิติการสกัดกั้นภัยคุกคาม",
-        "threats_mitigated": "ระงับภัยคุกคามสะสม",
-        "no_threats": "*การป้องกันทุกจุดปกติ ยังไม่พบภัยคุกคาม*",
-        "system_status": "สถานะระบบ",
-        "emergency_controls": "ระบบฉุกเฉิน",
+        "main_title": "🛡️ แดชบอร์ดความปลอดภัย",
+        "main_desc": "ศูนย์ควบคุมและเฝ้าระวังความปลอดภัยของเซิร์ฟเวอร์แบบเรียลไทม์\n──────────────────────────────",
+        "nav_placeholder": "เลือกเมนูที่ต้องการตั้งค่า...",
         "active": "เปิดใช้งาน",
         "disabled": "ปิดใช้งาน",
         "online": "พร้อมใช้งาน",
-        "healthy": "สมบูรณ์",
-        "armed": "พร้อมทำงาน",
-        "preset_balanced": "โหมด Balanced",
-        "preset_fortress": "โหมด Fortress",
-        "preset_under_attack": "โหมด Under Attack",
-        "refresh_soc": "รีเฟรช SOC",
-        "nav_placeholder": "เลือกส่วนที่ต้องการจัดการ...",
-        "preset_applied": "เปลี่ยนโปรไฟล์ความปลอดภัยเป็น **{preset}** สำเร็จ",
-        "sec_menu_title": "ระบบป้องกันภัยคุกคาม",
-        "sec_menu_desc": "โมดูลตรวจสอบแบบสดและการจำกัดความถี่อัตโนมัติ\nกดสวิตช์ด้านล่างเพื่อปรับกฎการป้องกัน\n──────────────────────────────",
-        "content_defense": "ความปลอดภัยข้อความ & เนื้อหา",
-        "privilege_defense": "การป้องกันสิทธิ์ & ห้อง",
-        "raid_abuse": "การป้องกัน Raid & ก่อกวน",
-        "hardening_title": "ระบบป้องกันขั้นสูง (Enterprise Hardening)",
-        "hardening_desc": "โมดูลวิเคราะห์พฤติกรรมในระดับเซิร์ฟเวอร์\nกดสวิตช์ด้านล่างเพื่อเปิด/ปิดระบบ\n──────────────────────────────",
-        "verify_title": "ระบบยืนยันตัวตน & สิทธิ์เข้าถึง",
-        "verify_desc": "ระบบยืนยันตัวตนผ่านเว็บและดักจับ IP ป้องกันไอดีอวตาร\n──────────────────────────────",
-        "mod_title": "ระบบจัดการสมาชิก",
-        "mod_desc": "เลือกสมาชิกจากเมนูด้านล่างเพื่อดูข้อมูล เตือน มิวท์ กักกัน หรือแบน\n──────────────────────────────",
-        "settings_title": "ตั้งค่าระบบ & ห้องดักบอท",
-        "settings_desc": "จัดการห้องเก็บ Log, ห้องดักสแปม และนโยบายความปลอดภัย\n──────────────────────────────",
-        "backup_title": "สำรองข้อมูล & กู้คืนโครงสร้างดิส",
-        "backup_desc": "บันทึก Snapshot โครงสร้าง (ห้อง, หมวดหมู่, ยศ และสิทธิ์) เพื่อกู้คืนทันทีหากเกิดเหตุ\n──────────────────────────────",
+        "healthy": "ปกติ",
+        "armed": "เปิดใช้งาน",
+        "lockdown_btn": "🚨 ล็อกดาวน์ฉุกเฉิน",
+        "unlock_btn": "🔓 ปลดล็อกดาวน์",
+        "refresh_btn": "🔄 รีเฟรช",
+        "sec_menu_title": "🛡️ ระบบป้องกันภัยคุกคาม",
+        "sec_menu_desc": "ตั้งค่าการตรวจสอบและป้องกันภัยคุกคามอัตโนมัติ\n──────────────────────────────",
+        "content_defense": "เนื้อหา & ข้อความ",
+        "privilege_defense": "สิทธิ์ & ห้อง",
+        "raid_abuse": "ป้องกัน Raid & ก่อกวน",
+        "hardening_title": "⚡ ระบบป้องกันขั้นสูง",
+        "hardening_desc": "ระบบวิเคราะห์พฤติกรรมและการปกป้องเซิร์ฟเวอร์ขั้นสูง\n──────────────────────────────",
+        "verify_title": "🔐 ระบบยืนยันตัวตน (Verification)",
+        "verify_desc": "ตั้งค่าระบบยืนยันตัวตนผ่านเว็บและดักจับ IP/VPN\n──────────────────────────────",
+        "mod_title": "👥 ระบบจัดการสมาชิก",
+        "mod_desc": "เลือกสมาชิกจากเมนูด้านล่างเพื่อดูข้อมูล เตือน มิวท์ หรือแบน\n──────────────────────────────",
+        "settings_title": "⚙️ การตั้งค่าระบบ",
+        "settings_desc": "จัดการห้องเก็บ Log, ห้องดักสแปม และรหัสความปลอดภัย\n──────────────────────────────",
+        "backup_title": "💾 สำรองข้อมูลเซิร์ฟเวอร์",
+        "backup_desc": "บันทึกและกู้คืนโครงสร้างห้อง หมวดหมู่ และยศ\n──────────────────────────────",
         "verify_public_title": "ยืนยันตัวตนเข้าสู่เซิร์ฟเวอร์",
-        "verify_public_desc": "ยินดีต้อนรับสู่ **{guild_name}**\nเพื่อความปลอดภัยของชุมชนและป้องกันบอทสแปม กรุณายืนยันตัวตนตามขั้นตอนด้านล่าง\n\n**ขั้นตอนการยืนยัน**\n• กดปุ่ม **Verify Identity** ด้านล่าง\n• แก้รหัสผ่านภาพบนหน้าเว็บที่ปลอดภัย\n• ระบบจะมอบยศสมาชิกให้อัตโนมัติทันที\n\n──────────────────────────────\n*ใช้เวลาไม่เกิน 10 วินาที รองรับทั้งมือถือและคอมพิวเตอร์*",
+        "verify_public_desc": "ยินดีต้อนรับสู่ **{guild_name}**\nเพื่อความปลอดภัยของชุมชน กรุณายืนยันตัวตนตามขั้นตอนด้านล่าง\n\n• กดปุ่ม **Verify Identity** ด้านล่าง\n• แก้รหัสผ่านภาพบนหน้าเว็บที่ปลอดภัย\n• บอทจะมอบยศสมาชิกให้อัตโนมัติทันที",
         "verify_btn_label": "Verify Identity",
-        "lockdown_btn": "ล็อกดาวน์ฉุกเฉิน",
-        "unlock_btn": "ปลดล็อกดาวน์",
         "scan_msg_btn": "สแกนข้อความ",
         "scan_acc_btn": "สแกนไอดีใหม่",
         "save_snapshot_btn": "บันทึก Snapshot",
         "restore_snapshot_btn": "กู้คืน Snapshot",
-        "deploy_honeypot_btn": "สร้างห้อง Decoy Trap",
+        "deploy_honeypot_btn": "สร้างห้องดักบอท",
     },
     "en": {
-        "sec_engine": "Security Engine",
-        "hardening": "Hardening (2026)",
-        "verify_access": "Verify & Access",
-        "member_controls": "Member Controls",
-        "configuration": "Configuration",
-        "backup_restore": "Backup & Restore",
+        "sec_engine": "Core Defense",
+        "hardening": "Advanced Defense",
+        "verify_access": "Verification & Access",
+        "member_controls": "Member Moderation",
+        "configuration": "Settings",
+        "backup_restore": "Backup & Recovery",
         "lang_toggle": "Language: EN",
         "back": "← Back",
-        "main_title": "Security Control Center",
-        "main_desc": "Enterprise Discord Security • Zero-Trust Architecture\n──────────────────────────────",
-        "soc_telemetry": "Live SOC Telemetry & Analytics",
-        "incident_timeline": "Recent Mitigated Incidents (Live Feed)",
-        "threat_analytics": "Threat Analytics",
-        "threats_mitigated": "Total Threats Mitigated",
-        "no_threats": "*All perimeter defenses normal. No active threats recorded.*",
-        "system_status": "System Status",
-        "emergency_controls": "Emergency Controls",
-        "active": "ACTIVE",
-        "disabled": "OFF",
-        "online": "ONLINE",
-        "healthy": "HEALTHY",
-        "armed": "ARMED",
-        "preset_balanced": "Balanced Mode",
-        "preset_fortress": "Fortress Mode",
-        "preset_under_attack": "Under Attack",
-        "refresh_soc": "Refresh SOC",
-        "nav_placeholder": "Jump to Security Section...",
-        "preset_applied": "Security profile changed to **{preset}** successfully.",
-        "sec_menu_title": "Security Defense Engine",
-        "sec_menu_desc": "Live heuristic defense modules and automated rate-limiting.\nToggle individual protections below or execute manual inspections.\n──────────────────────────────",
-        "content_defense": "Content Defense",
-        "privilege_defense": "Privilege Protection",
-        "raid_abuse": "Raid & Abuse",
-        "hardening_title": "Enterprise Hardening Controls",
-        "hardening_desc": "Heuristic defense modules operating at server level.\nToggle individual protections below to adjust rules.\n──────────────────────────────",
-        "verify_title": "Verification & Access Gateway",
-        "verify_desc": "External Web verification and IP-based anti-alt bot protection.\n──────────────────────────────",
-        "mod_title": "Member Moderation",
-        "mod_desc": "Select a member from the dropdown below to view status, warn, timeout, quarantine, or sanction.\n──────────────────────────────",
-        "settings_title": "Server Configuration & Decoys",
-        "settings_desc": "Manage log destinations, decoy traps, and access policies.\n──────────────────────────────",
-        "backup_title": "Server Backup & Disaster Recovery",
-        "backup_desc": "Snapshot server structure (channels, categories, roles, and permissions) for immediate rollback in case of an incident.\n──────────────────────────────",
-        "verify_public_title": "Member Verification",
-        "verify_public_desc": "Welcome to **{guild_name}**.\nTo protect the server against automated raid bots and keep the community secure, please complete the identity verification below.\n\n**Instructions**\n• Click the **Verify Identity** button below\n• Complete the captcha on the secure portal\n• Access role will be granted automatically\n\n──────────────────────────────\n*Verification takes seconds and works across all devices.*",
+        "main_title": "🛡️ Security Dashboard",
+        "main_desc": "Real-time server protection and automated security controls.\n──────────────────────────────",
+        "nav_placeholder": "Select a menu to configure...",
+        "active": "Active",
+        "disabled": "Disabled",
+        "online": "Online",
+        "healthy": "Normal",
+        "armed": "Active",
+        "lockdown_btn": "🚨 Emergency Lockdown",
+        "unlock_btn": "🔓 Release Lockdown",
+        "refresh_btn": "🔄 Refresh",
+        "sec_menu_title": "🛡️ Threat Defense System",
+        "sec_menu_desc": "Configure automated security and rate-limiting modules.\n──────────────────────────────",
+        "content_defense": "Content & Messages",
+        "privilege_defense": "Privileges & Channels",
+        "raid_abuse": "Raid & Anti-Abuse",
+        "hardening_title": "⚡ Advanced Defense Engine",
+        "hardening_desc": "Heuristic behavioral protection and permission controls.\n──────────────────────────────",
+        "verify_title": "🔐 Member Verification",
+        "verify_desc": "External web verification and anti-alt/VPN gateway.\n──────────────────────────────",
+        "mod_title": "👥 Member Moderation",
+        "mod_desc": "Select a member below to view status, warn, timeout, or ban.\n──────────────────────────────",
+        "settings_title": "⚙️ Server Settings",
+        "settings_desc": "Manage audit channels, decoy traps, and security PIN.\n──────────────────────────────",
+        "backup_title": "💾 Server Backup & Recovery",
+        "backup_desc": "Snapshot and restore channels, categories, and roles.\n──────────────────────────────",
+        "verify_public_title": "Server Verification",
+        "verify_public_desc": "Welcome to **{guild_name}**\nTo keep the community safe, please complete the identity verification below.\n\n• Click **Verify Identity** below\n• Complete the captcha on the web portal\n• Access role will be granted automatically",
         "verify_btn_label": "Verify Identity",
-        "lockdown_btn": "Emergency Lockdown",
-        "unlock_btn": "Release Lockdown",
         "scan_msg_btn": "Scan Messages",
         "scan_acc_btn": "Scan Accounts",
         "save_snapshot_btn": "Save Snapshot",
@@ -329,13 +307,12 @@ class OwnerPinModal(Modal, title="Security 2FA Verification"):
 # ==========================================
 def get_moderation_embed(guild_id: int = 0):
     lang = get_config(guild_id).get("language", "th") if guild_id else "th"
-    breadcrumb = "`Security Core › Member Governance`" if lang == "en" else "`ระบบความปลอดภัยหลัก › จัดการสมาชิก`"
     embed = discord.Embed(
         title=t("mod_title", lang),
-        description=f"{breadcrumb}\n{t('mod_desc', lang)}",
+        description=t("mod_desc", lang),
         color=discord.Color(0x2B2D31)
     )
-    embed.set_footer(text=f"Enterprise SOC v2.8 • Member Governance • Zero-Trust • UTC {datetime.datetime.utcnow().year}")
+    embed.set_footer(text="เลือกสมาชิกจากเมนูด้านล่างเพื่อจัดการ" if lang == "th" else "Select a member from the dropdown below")
     return embed
 
 class UserActionView(BaseSecurityView):
@@ -571,24 +548,23 @@ class VerifyMenuView(BaseSecurityView):
 def get_verify_embed(guild_id: int):
     conf = get_config(guild_id)
     lang = conf.get("language", "th")
-    v_chan = f"<#{conf['verify_channel_id']}>" if conf['verify_channel_id'] else "`Unconfigured`"
-    v_role = f"<@&{conf['verify_role_id']}>" if conf['verify_role_id'] else "`Unconfigured`"
+    v_chan = f"<#{conf['verify_channel_id']}>" if conf['verify_channel_id'] else ("`ยังไม่ตั้งค่า`" if lang == "th" else "`Unconfigured`")
+    v_role = f"<@&{conf['verify_role_id']}>" if conf['verify_role_id'] else ("`ยังไม่ตั้งค่า`" if lang == "th" else "`Unconfigured`")
     ip_status = f"`{t('active', lang)}`" if conf['ip_ban_guard'] else f"`{t('disabled', lang)}`"
     vpn_status = f"`{t('active', lang)}`" if conf.get('anti_vpn') else f"`{t('disabled', lang)}`"
-    domain_status = f"`{conf['verify_domain']}`" if conf.get('verify_domain') else f"`{get_public_verify_host(guild_id)}` (Default)"
-    breadcrumb = "`Security Core › Identity & Verification Gateway`" if lang == "en" else "`ระบบความปลอดภัยหลัก › ระบบยืนยันตัวตน`"
+    domain_status = f"`{conf['verify_domain']}`" if conf.get('verify_domain') else f"`{get_public_verify_host(guild_id)}`"
     
     embed = discord.Embed(
         title=t("verify_title", lang),
-        description=f"{breadcrumb}\n{t('verify_desc', lang)}",
+        description=t("verify_desc", lang),
         color=discord.Color(0x2B2D31)
     )
-    embed.add_field(name="Target Channel", value=v_chan, inline=True)
-    embed.add_field(name="Verified Role", value=v_role, inline=True)
-    embed.add_field(name="IP Blacklist Sync", value=ip_status, inline=True)
-    embed.add_field(name="Anti-VPN / Proxy", value=vpn_status, inline=True)
-    embed.add_field(name="Gateway Endpoint", value=domain_status, inline=False)
-    embed.set_footer(text=f"Enterprise SOC v2.8 • Identity Gateway • Zero-Trust • UTC {datetime.datetime.utcnow().year}")
+    embed.add_field(name="ห้องยืนยันตัวตน" if lang == "th" else "Verify Channel", value=v_chan, inline=True)
+    embed.add_field(name="ยศสมาชิกที่จะได้รับ" if lang == "th" else "Verified Role", value=v_role, inline=True)
+    embed.add_field(name="ระบบแบน IP อัตโนมัติ" if lang == "th" else "IP Ban Sync", value=ip_status, inline=True)
+    embed.add_field(name="บล็อก VPN / Proxy" if lang == "th" else "Anti-VPN / Proxy", value=vpn_status, inline=True)
+    embed.add_field(name="ลิงก์หน้าเว็บ Verify" if lang == "th" else "Portal URL", value=domain_status, inline=False)
+    embed.set_footer(text="ใช้ปุ่มด้านล่างเพื่อตั้งค่าหรือโพสต์กล่อง Verify" if lang == "th" else "Use the buttons below to configure or publish")
     return embed
 
 # ==========================================
@@ -598,38 +574,63 @@ def get_security_menu_embed(guild_id: int):
     conf = get_config(guild_id)
     lang = conf.get("language", "th")
     badge = lambda val: f"`{t('active', lang)}`" if val else f"`{t('disabled', lang)}`"
-    breadcrumb = "`Security Core › Defense Engine`" if lang == "en" else "`ระบบความปลอดภัยหลัก › ระบบป้องกันหลัก`"
     
     embed = discord.Embed(
         title=t("sec_menu_title", lang),
-        description=f"{breadcrumb}\n{t('sec_menu_desc', lang)}",
+        description=t("sec_menu_desc", lang),
         color=discord.Color(0x2B2D31)
     )
-    embed.add_field(
-        name=t("content_defense", lang),
-        value=f"• Malware Filter: {badge(conf['malware'])}\n"
-              f"• Phishing Guard: {badge(conf['phishing_api'])}\n"
-              f"• Anti-Dox Engine: {badge(conf['anti_dox'])}\n"
-              f"• AI Classifier: {badge(conf['ai'])}",
-        inline=True
-    )
-    embed.add_field(
-        name=t("privilege_defense", lang),
-        value=f"• Anti-Nuke Engine: {badge(conf['anti_nuke'])}\n"
-              f"• Perm Enforcement: {badge(conf['enforce_permissions'])}\n"
-              f"• Webhook Guard: {badge(conf.get('webhook_guard'))}\n"
-              f"• Anti-Invite: {badge(conf.get('anti_invite'))}",
-        inline=True
-    )
-    embed.add_field(
-        name=t("raid_abuse", lang),
-        value=f"• Mass Mention: {badge(conf['anti_mention'])}\n"
-              f"• Voice Raid Guard: {badge(conf['voice_anti_raid'])}\n"
-              f"• Ghost Ping Guard: {badge(conf.get('ghost_ping_guard'))}\n"
-              f"• Account Scanner: {badge(conf.get('suspect_scan'))}",
-        inline=True
-    )
-    embed.set_footer(text=f"Enterprise SOC v2.8 • Defense Engine • Low-Latency • UTC {datetime.datetime.utcnow().year}")
+    if lang == "th":
+        embed.add_field(
+            name=t("content_defense", lang),
+            value=f"• กรองมัลแวร์: {badge(conf['malware'])}\n"
+                  f"• ป้องกัน Phishing: {badge(conf['phishing_api'])}\n"
+                  f"• ป้องกัน Dox: {badge(conf['anti_dox'])}\n"
+                  f"• กรองคำด้วย AI: {badge(conf['ai'])}",
+            inline=True
+        )
+        embed.add_field(
+            name=t("privilege_defense", lang),
+            value=f"• Anti-Nuke: {badge(conf['anti_nuke'])}\n"
+                  f"• ควบคุมสิทธิ์ยศ: {badge(conf['enforce_permissions'])}\n"
+                  f"• Webhook Guard: {badge(conf.get('webhook_guard'))}\n"
+                  f"• บล็อกลิงก์เชิญ: {badge(conf.get('anti_invite'))}",
+            inline=True
+        )
+        embed.add_field(
+            name=t("raid_abuse", lang),
+            value=f"• ป้องกันแท็กหมู่: {badge(conf['anti_mention'])}\n"
+                  f"• กันป่วนห้องเสียง: {badge(conf['voice_anti_raid'])}\n"
+                  f"• ป้องกัน Ghost Ping: {badge(conf.get('ghost_ping_guard'))}\n"
+                  f"• ตรวจจับไอดีใหม่: {badge(conf.get('suspect_scan'))}",
+            inline=True
+        )
+    else:
+        embed.add_field(
+            name=t("content_defense", lang),
+            value=f"• Malware Filter: {badge(conf['malware'])}\n"
+                  f"• Phishing Guard: {badge(conf['phishing_api'])}\n"
+                  f"• Anti-Dox Engine: {badge(conf['anti_dox'])}\n"
+                  f"• AI Classifier: {badge(conf['ai'])}",
+            inline=True
+        )
+        embed.add_field(
+            name=t("privilege_defense", lang),
+            value=f"• Anti-Nuke Engine: {badge(conf['anti_nuke'])}\n"
+                  f"• Perm Enforcement: {badge(conf['enforce_permissions'])}\n"
+                  f"• Webhook Guard: {badge(conf.get('webhook_guard'))}\n"
+                  f"• Anti-Invite: {badge(conf.get('anti_invite'))}",
+            inline=True
+        )
+        embed.add_field(
+            name=t("raid_abuse", lang),
+            value=f"• Mass Mention: {badge(conf['anti_mention'])}\n"
+                  f"• Voice Raid Guard: {badge(conf['voice_anti_raid'])}\n"
+                  f"• Ghost Ping Guard: {badge(conf.get('ghost_ping_guard'))}\n"
+                  f"• Account Scanner: {badge(conf.get('suspect_scan'))}",
+            inline=True
+        )
+    embed.set_footer(text="คลิกปุ่มด้านล่างเพื่อเปิด/ปิดระบบ" if lang == "th" else "Click the buttons below to toggle protections")
     return embed
 
 class SecurityMenuView(BaseSecurityView):
@@ -961,23 +962,33 @@ def get_advanced_security_embed(guild_id: int):
     conf = get_config(guild_id)
     lang = conf.get("language", "th")
     badge = lambda k: f"`{t('active', lang)}`" if conf.get(k, True) else f"`{t('disabled', lang)}`"
-    breadcrumb = "`Security Core › Enterprise Hardening`" if lang == "en" else "`ระบบความปลอดภัยหลัก › ระบบป้องกันขั้นสูง`"
     
     embed = discord.Embed(
         title=t("hardening_title", lang),
-        description=f"{breadcrumb}\n{t('hardening_desc', lang)}",
+        description=t("hardening_desc", lang),
         color=discord.Color(0x2B2D31)
     )
-    embed.add_field(name="Anti-Bot Guard", value=f"{badge('anti_bot_add')} • Rejects unverified bots", inline=True)
-    embed.add_field(name="Mass Action Guard", value=f"{badge('anti_mass_action')} • Halts rapid kick/timeouts", inline=True)
-    embed.add_field(name="Server Hijack", value=f"{badge('anti_server_hijack')} • Reverts name/icon edits", inline=True)
-    embed.add_field(name="Auto-Panic", value=f"{badge('auto_panic_escalation')} • Locks channels on raids", inline=True)
-    embed.add_field(name="Zalgo Filter", value=f"{badge('anti_zalgo')} • Drops corrupt crash text", inline=True)
-    embed.add_field(name="Unban Guard", value=f"{badge('anti_unban_guard')} • Re-bans unauthorized unbans", inline=True)
-    embed.add_field(name="Impersonation", value=f"{badge('anti_impersonation')} • Resets staff lookalike names", inline=True)
-    embed.add_field(name="Raid Fingerprint", value=f"{badge('raid_fingerprint')} • Correlates alt account waves", inline=True)
-    embed.add_field(name="Owner DM Alerts", value=f"{badge('dm_owner_alert')} • Direct emergency alerts", inline=True)
-    embed.set_footer(text=f"Enterprise SOC v2.8 • Heuristic Hardening • Zero-Trust • UTC {datetime.datetime.utcnow().year}")
+    if lang == "th":
+        embed.add_field(name="กันบอทแปลกหน้า", value=f"{badge('anti_bot_add')} • เตะบอทที่ไม่มีสิทธิ์", inline=True)
+        embed.add_field(name="กันเตะ/แบนรัว", value=f"{badge('anti_mass_action')} • หยุดยั้งการ Abuse สิทธิ์", inline=True)
+        embed.add_field(name="กันยึดเซิร์ฟเวอร์", value=f"{badge('anti_server_hijack')} • คืนค่าชื่อและรูปดิสทันที", inline=True)
+        embed.add_field(name="ล็อกดาวน์อัตโนมัติ", value=f"{badge('auto_panic_escalation')} • ปิดห้องทันทีเมื่อโดน Raid", inline=True)
+        embed.add_field(name="กรองตัวอักษร Zalgo", value=f"{badge('anti_zalgo')} • ลบข้อความที่ทำให้ดิสค้าง", inline=True)
+        embed.add_field(name="กันแอบปลดแบน", value=f"{badge('anti_unban_guard')} • แบนซ้ำทันทีหากไม่ได้รับอนุญาต", inline=True)
+        embed.add_field(name="กันปลอมชื่อ Staff", value=f"{badge('anti_impersonation')} • รีเซ็ตชื่อคล้ายแอดมินทันที", inline=True)
+        embed.add_field(name="ตรวจจับลายนิ้วมือ Raid", value=f"{badge('raid_fingerprint')} • จับกลุ่มไอดีบอทบุกเซิร์ฟ", inline=True)
+        embed.add_field(name="DM เตือน Owner", value=f"{badge('dm_owner_alert')} • ส่งข้อความตรงเมื่อเกิดเหตุร้ายแรง", inline=True)
+    else:
+        embed.add_field(name="Anti-Bot Gateway", value=f"{badge('anti_bot_add')} • Rejects unverified bots", inline=True)
+        embed.add_field(name="Mass Action Guard", value=f"{badge('anti_mass_action')} • Halts rapid kick/timeouts", inline=True)
+        embed.add_field(name="Server Hijack", value=f"{badge('anti_server_hijack')} • Reverts name/icon edits", inline=True)
+        embed.add_field(name="Auto-Panic Raid", value=f"{badge('auto_panic_escalation')} • Locks channels on raids", inline=True)
+        embed.add_field(name="Zalgo / Crash Filter", value=f"{badge('anti_zalgo')} • Drops corrupt crash text", inline=True)
+        embed.add_field(name="Unban Bypass Guard", value=f"{badge('anti_unban_guard')} • Re-bans unauthorized unbans", inline=True)
+        embed.add_field(name="Staff Impersonation", value=f"{badge('anti_impersonation')} • Resets lookalike names", inline=True)
+        embed.add_field(name="Raid Fingerprint", value=f"{badge('raid_fingerprint')} • Correlates alt raid waves", inline=True)
+        embed.add_field(name="Owner DM Alerts", value=f"{badge('dm_owner_alert')} • Direct emergency alerts", inline=True)
+    embed.set_footer(text="คลิกปุ่มด้านล่างเพื่อเปิด/ปิดระบบ" if lang == "th" else "Click buttons below to toggle protections")
     return embed
 
 # ==========================================
@@ -986,24 +997,23 @@ def get_advanced_security_embed(guild_id: int):
 def get_settings_embed(guild_id: int):
     conf = get_config(guild_id)
     lang = conf.get("language", "th")
-    log_ch = f"<#{conf['log_channel']}>" if conf.get('log_channel') else "`Unconfigured`"
-    q_role = f"<@&{conf['quarantine_role_id']}>" if conf.get('quarantine_role_id') else "`Unconfigured`"
-    hp_ch = f"<#{conf['honeypot_channel_id']}>" if conf.get('honeypot_channel_id') else "`Not Deployed`"
-    min_age = f"{conf.get('min_account_age_days', 3)} days"
-    pin_status = "`Configured`" if conf.get('owner_pin') else "`Default (123456)`"
-    breadcrumb = "`Security Core › Server Configuration`" if lang == "en" else "`ระบบความปลอดภัยหลัก › ตั้งค่าระบบ & ห้องดัก`"
+    log_ch = f"<#{conf['log_channel']}>" if conf.get('log_channel') else ("`ยังไม่ตั้งค่า`" if lang == "th" else "`Unconfigured`")
+    q_role = f"<@&{conf['quarantine_role_id']}>" if conf.get('quarantine_role_id') else ("`ยังไม่ตั้งค่า`" if lang == "th" else "`Unconfigured`")
+    hp_ch = f"<#{conf['honeypot_channel_id']}>" if conf.get('honeypot_channel_id') else ("`ยังไม่สร้าง`" if lang == "th" else "`Not Deployed`")
+    min_age = f"{conf.get('min_account_age_days', 3)} วัน" if lang == "th" else f"{conf.get('min_account_age_days', 3)} days"
+    pin_status = "`ตั้งค่าแล้ว`" if lang == "th" else "`Configured`"
     
     embed = discord.Embed(
         title=t("settings_title", lang),
-        description=f"{breadcrumb}\n{t('settings_desc', lang)}",
+        description=t("settings_desc", lang),
         color=discord.Color(0x2B2D31)
     )
-    embed.add_field(name="Audit Log Channel", value=log_ch, inline=True)
-    embed.add_field(name="Quarantine Role", value=q_role, inline=True)
-    embed.add_field(name="Decoy Honeypot", value=hp_ch, inline=True)
-    embed.add_field(name="Min Account Age", value=f"`{min_age}`", inline=True)
-    embed.add_field(name="2FA Security PIN", value=pin_status, inline=True)
-    embed.set_footer(text=f"Enterprise SOC v2.8 • Server Configuration • UTC {datetime.datetime.utcnow().year}")
+    embed.add_field(name="ห้องเก็บ Log" if lang == "th" else "Audit Log Channel", value=log_ch, inline=True)
+    embed.add_field(name="ยศกักกัน (Quarantine)" if lang == "th" else "Quarantine Role", value=q_role, inline=True)
+    embed.add_field(name="ห้องดักบอท (Decoy)" if lang == "th" else "Decoy Honeypot", value=hp_ch, inline=True)
+    embed.add_field(name="อายุไอดีขั้นต่ำ" if lang == "th" else "Min Account Age", value=f"`{min_age}`", inline=True)
+    embed.add_field(name="รหัส PIN 2FA" if lang == "th" else "2FA Security PIN", value=pin_status, inline=True)
+    embed.set_footer(text="ใช้ปุ่มด้านล่างเพื่อแก้ไขการตั้งค่า" if lang == "th" else "Use the buttons below to edit settings")
     return embed
 
 class SettingsMenuView(BaseSecurityView):
@@ -1067,19 +1077,18 @@ def get_backup_embed(guild_id: int):
     lang = conf.get("language", "th")
     latest = get_latest_backup(guild_id)
     if latest:
-        dt = datetime.datetime.fromtimestamp(latest[1]).strftime('%Y-%m-%d %H:%M:%S')
+        dt = datetime.datetime.fromtimestamp(latest[1]).strftime('%d/%m/%Y %H:%M')
         data = json.loads(latest[2])
-        status = f"**Backup #{latest[0]}**\n• Timestamp: `{dt}`\n• Roles: `{len(data.get('roles', []))}` | Channels: `{len(data.get('channels', []))}`"
+        status = f"**Backup #{latest[0]}** ({dt})\n• ยศ: `{len(data.get('roles', []))}` | ห้อง: `{len(data.get('channels', []))}`" if lang == "th" else f"**Backup #{latest[0]}** ({dt})\n• Roles: `{len(data.get('roles', []))}` | Channels: `{len(data.get('channels', []))}`"
     else:
-        status = "*No manual backup found in database.*"
-    breadcrumb = "`Security Core › Disaster Recovery & Rollback`" if lang == "en" else "`ระบบความปลอดภัยหลัก › สำรองข้อมูล & กู้คืน`"
+        status = "*ยังไม่มีข้อมูลสำรองในระบบ*" if lang == "th" else "*No manual backup found in database.*"
         
     embed = discord.Embed(
         title=t("backup_title", lang),
-        description=f"{breadcrumb}\n{t('backup_desc', lang)}\n\n**Latest Snapshot**\n{status}",
+        description=f"{t('backup_desc', lang)}\n\n**ข้อมูลสำรองล่าสุด**\n{status}" if lang == "th" else f"{t('backup_desc', lang)}\n\n**Latest Snapshot**\n{status}",
         color=discord.Color(0x2B2D31)
     )
-    embed.set_footer(text=f"Enterprise SOC v2.8 • Disaster Recovery Engine • UTC {datetime.datetime.utcnow().year}")
+    embed.set_footer(text="กดปุ่มด้านล่างเพื่อบันทึกหรือกู้คืนโครงสร้าง" if lang == "th" else "Use buttons below to save or restore")
     return embed
 
 class BackupMenuView(BaseSecurityView):
@@ -1131,120 +1140,62 @@ class BackupMenuView(BaseSecurityView):
 # ==========================================
 # MAIN DASHBOARD EMBED & VIEW
 # ==========================================
-# ==========================================
-# MAIN DASHBOARD EMBED & VIEW
-# ==========================================
 def get_main_embed(guild_id: int = 0, bot: discord.Client = None):
     conf = get_config(guild_id) if guild_id else {}
     lang = conf.get("language", "th")
-    sec_score = calculate_security_score(conf)
-    meter_str = make_meter(sec_score)
-    ram_mb = get_process_memory_mb()
-    latency_ms = round(bot.latency * 1000) if (bot and hasattr(bot, "latency") and bot.latency) else 22
-
-    # Posture status
-    if conf.get("global_panic"):
-        posture_label = "UNDER ATTACK (LOCKDOWN)" if lang == "en" else "UNDER ATTACK (ล็อกดาวน์)"
-    elif conf.get("min_account_age_days", 3) >= 7 and conf.get("anti_invite"):
-        posture_label = "FORTRESS (STRICT)" if lang == "en" else "FORTRESS (เข้มงวดสูง)"
-    else:
-        posture_label = "BALANCED (ACTIVE)" if lang == "en" else "BALANCED (สมดุล)"
-
-    breadcrumb = "`Security Core › Overview › Live SOC`" if lang == "en" else "`ระบบความปลอดภัยหลัก › ภาพรวม › SOC Telemetry`"
     
+    is_panic = conf.get("global_panic", False)
+    panic_status = ("🔴 เปิดใช้งาน (Lockdown)" if lang == "th" else "🔴 Active (Lockdown)") if is_panic else ("🟢 ปกติ" if lang == "th" else "🟢 Inactive")
+    defense_status = "🟢 พร้อมทำงาน" if lang == "th" else "🟢 Active"
+    lang_name = "ไทย 🇹🇭" if lang == "th" else "English 🇬🇧"
+    
+    defense_lbl = "ระบบป้องกัน" if lang == "th" else "Protection"
+    panic_lbl = "ล็อกดาวน์" if lang == "th" else "Lockdown"
+    lang_lbl = "ภาษา" if lang == "th" else "Language"
+    blocked_lbl = "บล็อกสะสม" if lang == "th" else "Total Mitigated"
+    latest_lbl = "ล่าสุด" if lang == "th" else "Latest"
+    unit_lbl = "ครั้ง" if lang == "th" else "threats"
+
     embed = discord.Embed(
         title=t("main_title", lang),
-        description=f"{breadcrumb}\n{t('main_desc', lang)}",
+        description=t("main_desc", lang),
         color=discord.Color(0x2B2D31)
     )
 
-    # 1. Telemetry micro-bars
+    stats = get_security_stats(guild_id) if guild_id else {}
+    total_blocked = sum(data.get("count", 0) for data in stats.values())
+
     embed.add_field(
-        name=t("soc_telemetry", lang),
+        name="สถานะระบบ" if lang == "th" else "System Status",
         value=(
-            f"• **Security Posture:** `{posture_label}`\n"
-            f"• **Security Readiness:** `{meter_str}`\n"
-            f"• **Process Memory:** `{ram_mb:.1f} MB / 512 MB` *(Render Eco)*\n"
-            f"• **Gateway Latency:** `{latency_ms}ms` • *Shard 0/1 • Active*"
+            f"• {defense_lbl}: `{defense_status}`\n"
+            f"• {panic_lbl}: `{panic_status}`\n"
+            f"• {lang_lbl}: `{lang_name}`"
         ),
-        inline=False
+        inline=True
     )
 
-    # 2. Incident Terminal Timeline
-    incidents = get_recent_incidents(guild_id, limit=3) if guild_id else []
+    incidents = get_recent_incidents(guild_id, limit=1) if guild_id else []
     if incidents:
-        incident_lines = []
-        for inc in incidents:
-            t_str = datetime.datetime.fromtimestamp(inc["timestamp"]).strftime("%H:%M:%S")
-            evt = inc["event_type"].upper()
-            desc = inc["description"]
-            if len(desc) > 48:
-                desc = desc[:45] + "..."
-            incident_lines.append(f"[{t_str}] {evt}: {desc}")
-        feed_text = "```log\n" + "\n".join(incident_lines) + "\n```"
+        inc = incidents[0]
+        t_str = datetime.datetime.fromtimestamp(inc["timestamp"]).strftime("%H:%M")
+        desc = inc["description"]
+        if len(desc) > 35:
+            desc = desc[:32] + "..."
+        recent_str = f"`[{t_str}]` {desc}"
     else:
-        feed_text = "```log\n[ALL CLEAR] Zero perimeter breaches. Monitoring active.\n```" if lang == "en" else "```log\n[ALL CLEAR] ตรวจสอบรอบเซิร์ฟเวอร์ปกติ ยังไม่พบการบุกรุก\n```"
+        recent_str = "`ยังไม่พบภัยคุกคาม`" if lang == "th" else "`No threats recorded`"
 
     embed.add_field(
-        name=t("incident_timeline", lang),
-        value=feed_text,
-        inline=False
-    )
-
-    # 3. Threat Analytics
-    if guild_id:
-        stats = get_security_stats(guild_id)
-        total_blocked = sum(data.get("count", 0) for data in stats.values())
-        stat_labels = {
-            "anti_nuke": "Anti-Nuke Engine",
-            "permission_escalation": "Permission Escalation",
-            "channel_tampering": "Channel Tampering",
-            "emoji_nuke": "Emoji Protection",
-            "sticker_nuke": "Sticker Protection",
-            "unban_bypass": "Unban Bypass",
-            "anti_bot_add": "Anti-Bot Gateway",
-            "raid_join_flood": "Join Flood Shield",
-            "raid_fingerprint": "Raid Fingerprint",
-            "nickname_impersonation": "Staff Impersonation",
-            "mass_kick": "Mass Kick Prevention",
-            "mass_timeout": "Mass Timeout",
-            "server_hijack": "Server Hijack Reversion",
-            "phishing": "Phishing Blocker",
-            "typosquatting": "Typosquatting Shield",
-            "zalgo": "Zalgo Filter",
-            "anti_dox": "Anti-Dox Engine",
-            "anti_invite": "Unauthorized Invite",
-            "mass_mention": "Mass Mention Shield",
-            "webhook_tampering": "Webhook Exploit Killer",
-            "honeypot_triggered": "Honeypot Decoy",
-            "ghost_ping": "Ghost Ping Guard"
-        }
-        sorted_events = sorted(stats.items(), key=lambda x: x[1].get("count", 0), reverse=True)
-        active_stats = [item for item in sorted_events if item[1].get("count", 0) > 0]
-        if active_stats:
-            stat_summary_lines = [f"• **{stat_labels.get(evt, evt)}**: `{data['count']}` mitigated" for evt, data in active_stats[:4]]
-            stats_text = "\n".join(stat_summary_lines)
-        else:
-            stats_text = t("no_threats", lang)
-        embed.add_field(
-            name=t("threat_analytics", lang),
-            value=f"**{t('threats_mitigated', lang)}:** `{total_blocked:,}`\n{stats_text}\n──────────────────────────────",
-            inline=False
-        )
-
-    # 4. Status Badges
-    embed.add_field(
-        name=t("system_status", lang),
-        value=f"• Core Defense: `{t('active', lang)}`\n• Heuristics: `{t('active', lang)}`\n• Web Verify: `{t('online', lang)}`",
-        inline=True
-    )
-    embed.add_field(
-        name=t("emergency_controls", lang),
-        value=f"• Auto-Snapshot: `{t('healthy', lang)}`\n• 2FA Security: `{t('armed', lang)}`\n• IP Blacklist: `{t('active', lang)}`",
+        name="สถิติการป้องกัน" if lang == "th" else "Mitigation Activity",
+        value=(
+            f"• {blocked_lbl}: `{total_blocked:,} {unit_lbl}`\n"
+            f"• {latest_lbl}: {recent_str}"
+        ),
         inline=True
     )
 
-    embed.set_footer(text=f"Enterprise SOC v2.8 • Global Gateway: Online • Zero-Trust • UTC {datetime.datetime.utcnow().year}")
+    embed.set_footer(text="พิมพ์ /security เพื่อเปิดแผงควบคุม" if lang == "th" else "Type /security to open this panel")
     return embed
 
 class MainDashboardNavSelect(Select):
@@ -1253,38 +1204,38 @@ class MainDashboardNavSelect(Select):
             discord.SelectOption(
                 label=t("sec_engine", lang),
                 value="sec_engine",
-                description="Malware, phishing, rate-limits & anti-nuke" if lang == "en" else "ความปลอดภัยเนื้อหา, สแปม, Anti-Nuke",
-                default=False
+                description="Anti-Nuke, กรองข้อความ, มัลแวร์, สแปม" if lang == "th" else "Anti-Nuke, content filter, anti-spam",
+                emoji="🛡️"
             ),
             discord.SelectOption(
                 label=t("hardening", lang),
                 value="hardening",
-                description="Behavior heuristics, anti-bot, hijack reversion" if lang == "en" else "วิเคราะห์พฤติกรรม, กันบอท, กันยึดเซิร์ฟเวอร์",
-                default=False
+                description="กันบอทแปลกหน้า, กันยึดเซิร์ฟ, ปลอมชื่อ Staff" if lang == "th" else "Anti-bot, anti-hijack, impersonation guard",
+                emoji="⚡"
             ),
             discord.SelectOption(
                 label=t("verify_access", lang),
                 value="verify_access",
-                description="Web captcha portal, anti-VPN & IP guards" if lang == "en" else "เว็บยืนยันตัวตน, ดักจับ VPN และ IP สแปม",
-                default=False
+                description="เว็บ Verify แคปช่า, ดักจับ IP และ VPN" if lang == "th" else "Web captcha verification, IP & VPN guard",
+                emoji="🔐"
             ),
             discord.SelectOption(
                 label=t("member_controls", lang),
                 value="member_controls",
-                description="Moderation, warnings, timeout & quarantine" if lang == "en" else "ตรวจสอบ เตือน มิวท์ กักกัน หรือแบนสมาชิก",
-                default=False
+                description="เตือน, มิวท์, กักกัน (Quarantine), แบน" if lang == "th" else "Warn, timeout, quarantine, ban",
+                emoji="👥"
             ),
             discord.SelectOption(
                 label=t("configuration", lang),
                 value="configuration",
-                description="Audit logs, decoy honeypots & PINs" if lang == "en" else "ห้องเก็บ Log, ห้องดัก Decoy และรหัส PIN",
-                default=False
+                description="ห้อง Log, ห้อง Decoy Trap, รหัส PIN" if lang == "th" else "Audit log channel, decoy trap, owner PIN",
+                emoji="⚙️"
             ),
             discord.SelectOption(
                 label=t("backup_restore", lang),
                 value="backup_restore",
-                description="Automated snapshots & fast rollback" if lang == "en" else "บันทึก Snapshot โครงสร้างดิสและกู้คืนฉุกเฉิน",
-                default=False
+                description="บันทึก Snapshot โครงสร้างห้องและยศ" if lang == "th" else "Server structure snapshot & restore",
+                emoji="💾"
             ),
         ]
         super().__init__(placeholder=t("nav_placeholder", lang), min_values=1, max_values=1, options=options, row=0)
@@ -1312,64 +1263,24 @@ class MainDashboardView(BaseSecurityView):
         conf = get_config(guild_id) if guild_id else {}
         lang = conf.get("language", "th")
 
-        # Row 0: Rich Navigation Select Menu
+        # Row 0: Clean Navigation Dropdown
         self.add_item(MainDashboardNavSelect(lang))
 
-        # Row 1: Security Posture Profile Preset Buttons
-        btn_preset_balanced = Button(label=t("preset_balanced", lang), style=discord.ButtonStyle.secondary, row=1)
-        btn_preset_balanced.callback = self.btn_preset_balanced_cb
-        self.add_item(btn_preset_balanced)
-
-        btn_preset_fortress = Button(label=t("preset_fortress", lang), style=discord.ButtonStyle.primary, row=1)
-        btn_preset_fortress.callback = self.btn_preset_fortress_cb
-        self.add_item(btn_preset_fortress)
-
-        btn_preset_under_attack = Button(label=t("preset_under_attack", lang), style=discord.ButtonStyle.danger, row=1)
-        btn_preset_under_attack.callback = self.btn_preset_under_attack_cb
-        self.add_item(btn_preset_under_attack)
-
-        # Row 2: Control & Utility Actions
-        btn_lang = Button(label=t("lang_toggle", lang), style=discord.ButtonStyle.secondary, row=2)
-        btn_lang.callback = self.btn_language_toggle
-        self.add_item(btn_lang)
-
+        # Row 1: Clean Action Buttons (Only 3 essential buttons)
         is_panic = conf.get("global_panic", False)
         lockdown_label = t("unlock_btn", lang) if is_panic else t("lockdown_btn", lang)
         lockdown_style = discord.ButtonStyle.success if is_panic else discord.ButtonStyle.danger
-        btn_lockdown = Button(label=lockdown_label, style=lockdown_style, row=2)
+        btn_lockdown = Button(label=lockdown_label, style=lockdown_style, row=1)
         btn_lockdown.callback = self.btn_toggle_lockdown
         self.add_item(btn_lockdown)
 
-        btn_refresh = Button(label=t("refresh_soc", lang), style=discord.ButtonStyle.secondary, row=2)
+        btn_lang = Button(label=t("lang_toggle", lang), style=discord.ButtonStyle.secondary, row=1)
+        btn_lang.callback = self.btn_language_toggle
+        self.add_item(btn_lang)
+
+        btn_refresh = Button(label=t("refresh_btn", lang), style=discord.ButtonStyle.secondary, row=1)
         btn_refresh.callback = self.btn_refresh_soc
         self.add_item(btn_refresh)
-
-    async def btn_preset_balanced_cb(self, interaction: discord.Interaction):
-        apply_security_preset(interaction.guild.id, "balanced")
-        lang = get_config(interaction.guild.id).get("language", "th")
-        await interaction.response.edit_message(embed=get_main_embed(interaction.guild.id, interaction.client), view=MainDashboardView(interaction.guild.id))
-        try:
-            await interaction.followup.send(t("preset_applied", lang).format(preset="Balanced"), ephemeral=True)
-        except Exception:
-            pass
-
-    async def btn_preset_fortress_cb(self, interaction: discord.Interaction):
-        apply_security_preset(interaction.guild.id, "fortress")
-        lang = get_config(interaction.guild.id).get("language", "th")
-        await interaction.response.edit_message(embed=get_main_embed(interaction.guild.id, interaction.client), view=MainDashboardView(interaction.guild.id))
-        try:
-            await interaction.followup.send(t("preset_applied", lang).format(preset="Fortress"), ephemeral=True)
-        except Exception:
-            pass
-
-    async def btn_preset_under_attack_cb(self, interaction: discord.Interaction):
-        apply_security_preset(interaction.guild.id, "under_attack")
-        lang = get_config(interaction.guild.id).get("language", "th")
-        await interaction.response.edit_message(embed=get_main_embed(interaction.guild.id, interaction.client), view=MainDashboardView(interaction.guild.id))
-        try:
-            await interaction.followup.send(t("preset_applied", lang).format(preset="Under Attack"), ephemeral=True)
-        except Exception:
-            pass
 
     async def btn_toggle_lockdown(self, interaction: discord.Interaction):
         conf = get_config(interaction.guild.id)
