@@ -28,7 +28,9 @@ ALLOWED_CONFIG_KEYS = {
     "self_bot", "webhook_guard", "auto_purge", "image_scanner",
     "verify_channel_id", "verify_role_id", "min_account_age_days", "ip_ban_guard",
     "anti_vpn", "ghost_ping_guard", "owner_pin", "anti_invite", "verify_domain",
-    "suspect_scan", "global_panic"
+    "suspect_scan", "global_panic",
+    "anti_bot_add", "anti_mass_action", "anti_server_hijack",
+    "auto_panic_escalation", "anti_zalgo"
 }
 
 def init_db():
@@ -50,6 +52,7 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS backups (id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER, timestamp REAL, data TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS ip_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, guild_id INTEGER, user_id INTEGER, ip_address TEXT, user_agent TEXT, timestamp REAL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS banned_ips (ip_address TEXT PRIMARY KEY, reason TEXT, timestamp REAL)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS server_snapshots (guild_id INTEGER PRIMARY KEY, timestamp REAL, data TEXT)''')
     conn.commit()
     
     # อัปเกรดฐานข้อมูลรองรับฟีเจอร์ใหม่
@@ -59,7 +62,9 @@ def init_db():
         ("self_bot", 1), ("webhook_guard", 1), ("auto_purge", 1), ("image_scanner", 0),
         ("verify_channel_id", 0), ("verify_role_id", 0), ("min_account_age_days", 3), ("ip_ban_guard", 1),
         ("anti_vpn", 1), ("ghost_ping_guard", 1), ("anti_invite", 1), ("suspect_scan", 1),
-        ("global_panic", 0)
+        ("global_panic", 0),
+        ("anti_bot_add", 1), ("anti_mass_action", 1), ("anti_server_hijack", 1),
+        ("auto_panic_escalation", 1), ("anti_zalgo", 1)
     ]
     for col, default in columns:
         try: c.execute(f"ALTER TABLE guild_config ADD COLUMN {col} INTEGER DEFAULT {default}")
@@ -79,7 +84,7 @@ def get_config(guild_id: int):
     if guild_id in config_cache: return config_cache[guild_id]
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
-    c.execute("SELECT log_channel_id, malware_filter, ai_filter, strike_system, anti_nuke, anti_mention, phishing_api, quarantine_role_id, voice_anti_raid, enforce_permissions, anti_dox, honeypot_channel_id, self_bot, webhook_guard, auto_purge, image_scanner, verify_channel_id, verify_role_id, min_account_age_days, ip_ban_guard, anti_vpn, ghost_ping_guard, owner_pin, anti_invite, verify_domain, suspect_scan, global_panic FROM guild_config WHERE guild_id = ?", (guild_id,))
+    c.execute("SELECT log_channel_id, malware_filter, ai_filter, strike_system, anti_nuke, anti_mention, phishing_api, quarantine_role_id, voice_anti_raid, enforce_permissions, anti_dox, honeypot_channel_id, self_bot, webhook_guard, auto_purge, image_scanner, verify_channel_id, verify_role_id, min_account_age_days, ip_ban_guard, anti_vpn, ghost_ping_guard, owner_pin, anti_invite, verify_domain, suspect_scan, global_panic, anti_bot_add, anti_mass_action, anti_server_hijack, auto_panic_escalation, anti_zalgo FROM guild_config WHERE guild_id = ?", (guild_id,))
     row = c.fetchone()
     conn.close()
     if row:
@@ -95,7 +100,12 @@ def get_config(guild_id: int):
             "anti_invite": bool(row[23] if len(row) > 23 and row[23] is not None else 1),
             "verify_domain": row[24] if len(row) > 24 and row[24] else "",
             "suspect_scan": bool(row[25] if len(row) > 25 and row[25] is not None else 1),
-            "global_panic": bool(row[26] if len(row) > 26 and row[26] is not None else 0)
+            "global_panic": bool(row[26] if len(row) > 26 and row[26] is not None else 0),
+            "anti_bot_add": bool(row[27] if len(row) > 27 and row[27] is not None else 1),
+            "anti_mass_action": bool(row[28] if len(row) > 28 and row[28] is not None else 1),
+            "anti_server_hijack": bool(row[29] if len(row) > 29 and row[29] is not None else 1),
+            "auto_panic_escalation": bool(row[30] if len(row) > 30 and row[30] is not None else 1),
+            "anti_zalgo": bool(row[31] if len(row) > 31 and row[31] is not None else 1)
         }
     else:
         conf = {
@@ -106,7 +116,9 @@ def get_config(guild_id: int):
             "self_bot": True, "webhook_guard": True, "auto_purge": True, "image_scanner": False,
             "verify_channel_id": 0, "verify_role_id": 0, "min_account_age_days": 3, "ip_ban_guard": True,
             "anti_vpn": True, "ghost_ping_guard": True, "owner_pin": "123456", "anti_invite": True, "verify_domain": "",
-            "suspect_scan": True, "global_panic": False
+            "suspect_scan": True, "global_panic": False,
+            "anti_bot_add": True, "anti_mass_action": True, "anti_server_hijack": True,
+            "auto_panic_escalation": True, "anti_zalgo": True
         }
         update_config(guild_id, "log_channel_id", DEFAULT_LOG_CHANNEL_ID)
         update_config(guild_id, "honeypot_channel_id", DEFAULT_HONEYPOT_CHANNEL_ID)
@@ -198,6 +210,21 @@ def get_latest_backup(guild_id: int):
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute("SELECT id, timestamp, data FROM backups WHERE guild_id = ? ORDER BY id DESC LIMIT 1", (guild_id,))
+    row = c.fetchone()
+    conn.close()
+    return row
+
+def save_server_snapshot(guild_id: int, data: str):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO server_snapshots (guild_id, timestamp, data) VALUES (?, ?, ?)", (guild_id, time.time(), data))
+    conn.commit()
+    conn.close()
+
+def get_server_snapshot(guild_id: int):
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    c.execute("SELECT timestamp, data FROM server_snapshots WHERE guild_id = ?", (guild_id,))
     row = c.fetchone()
     conn.close()
     return row

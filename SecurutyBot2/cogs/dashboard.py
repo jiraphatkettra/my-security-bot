@@ -608,6 +608,71 @@ class SecurityMenuView(BaseSecurityView):
     async def btn_back(self, interaction: discord.Interaction, button: Button):
         await interaction.response.edit_message(content=None, embed=get_main_embed(), view=MainDashboardView())
 
+# ==========================================
+# ADVANCED SECURITY VIEW (ฟีเจอร์ใหม่ 2026)
+# ==========================================
+class AdvancedSecurityView(BaseSecurityView):
+    def __init__(self, guild_id: int):
+        super().__init__(timeout=300)
+        self.guild_id = guild_id
+        conf = get_config(guild_id)
+
+        # Row 0: ป้องกันขั้นสูง
+        bot_btn = Button(label="🤖 Anti-Bot Guard" if conf.get("anti_bot_add") else "🤖 Bot Guard (ปิด)", style=discord.ButtonStyle.success if conf.get("anti_bot_add") else discord.ButtonStyle.danger, row=0)
+        bot_btn.callback = self.toggle_anti_bot
+        mass_btn = Button(label="⚡ Anti-Mass Action" if conf.get("anti_mass_action") else "⚡ Mass Action (ปิด)", style=discord.ButtonStyle.success if conf.get("anti_mass_action") else discord.ButtonStyle.danger, row=0)
+        mass_btn.callback = self.toggle_anti_mass
+        hijack_btn = Button(label="🏰 Anti-Hijack" if conf.get("anti_server_hijack") else "🏰 Hijack (ปิด)", style=discord.ButtonStyle.success if conf.get("anti_server_hijack") else discord.ButtonStyle.danger, row=0)
+        hijack_btn.callback = self.toggle_anti_hijack
+
+        # Row 1: ระบบอัตโนมัติ
+        panic_btn = Button(label="🔥 Auto-Panic" if conf.get("auto_panic_escalation") else "🔥 Auto-Panic (ปิด)", style=discord.ButtonStyle.success if conf.get("auto_panic_escalation") else discord.ButtonStyle.danger, row=1)
+        panic_btn.callback = self.toggle_auto_panic
+        zalgo_btn = Button(label="🔣 Anti-Zalgo" if conf.get("anti_zalgo") else "🔣 Zalgo (ปิด)", style=discord.ButtonStyle.success if conf.get("anti_zalgo") else discord.ButtonStyle.danger, row=1)
+        zalgo_btn.callback = self.toggle_anti_zalgo
+
+        self.add_item(bot_btn)
+        self.add_item(mass_btn)
+        self.add_item(hijack_btn)
+        self.add_item(panic_btn)
+        self.add_item(zalgo_btn)
+
+    async def toggle_anti_bot(self, interaction: discord.Interaction):
+        update_config(self.guild_id, "anti_bot_add", int(not get_config(self.guild_id).get("anti_bot_add")))
+        await interaction.response.edit_message(embed=get_advanced_security_embed(self.guild_id), view=AdvancedSecurityView(self.guild_id))
+
+    async def toggle_anti_mass(self, interaction: discord.Interaction):
+        update_config(self.guild_id, "anti_mass_action", int(not get_config(self.guild_id).get("anti_mass_action")))
+        await interaction.response.edit_message(embed=get_advanced_security_embed(self.guild_id), view=AdvancedSecurityView(self.guild_id))
+
+    async def toggle_anti_hijack(self, interaction: discord.Interaction):
+        update_config(self.guild_id, "anti_server_hijack", int(not get_config(self.guild_id).get("anti_server_hijack")))
+        await interaction.response.edit_message(embed=get_advanced_security_embed(self.guild_id), view=AdvancedSecurityView(self.guild_id))
+
+    async def toggle_auto_panic(self, interaction: discord.Interaction):
+        update_config(self.guild_id, "auto_panic_escalation", int(not get_config(self.guild_id).get("auto_panic_escalation")))
+        await interaction.response.edit_message(embed=get_advanced_security_embed(self.guild_id), view=AdvancedSecurityView(self.guild_id))
+
+    async def toggle_anti_zalgo(self, interaction: discord.Interaction):
+        update_config(self.guild_id, "anti_zalgo", int(not get_config(self.guild_id).get("anti_zalgo")))
+        await interaction.response.edit_message(embed=get_advanced_security_embed(self.guild_id), view=AdvancedSecurityView(self.guild_id))
+
+    @discord.ui.button(label="🔙 กลับหน้าหลัก", style=discord.ButtonStyle.secondary, row=2)
+    async def btn_back(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.edit_message(content=None, embed=get_main_embed(), view=MainDashboardView())
+
+def get_advanced_security_embed(guild_id: int):
+    conf = get_config(guild_id)
+    s = lambda k: "🟢 เปิดใช้งาน" if conf.get(k) else "🔴 ปิดใช้งาน"
+    embed = discord.Embed(title="🔰 ระบบป้องกันขั้นสูง (Advanced 2026)", color=discord.Color.dark_gold())
+    embed.add_field(name="🤖 Anti-Bot Guard", value=f"{s('anti_bot_add')}\nเตะบอทแปลกหน้าที่ไม่ได้รับอนุญาต", inline=True)
+    embed.add_field(name="⚡ Anti-Mass Action", value=f"{s('anti_mass_action')}\nดักจับ Mass Kick/Timeout รัว", inline=True)
+    embed.add_field(name="🏰 Anti-Hijack", value=f"{s('anti_server_hijack')}\nป้องกันเปลี่ยนชื่อ/รูปดิส", inline=True)
+    embed.add_field(name="🔥 Auto-Panic", value=f"{s('auto_panic_escalation')}\nล็อกดาวน์อัตโนมัติเมื่อพบ Raid", inline=True)
+    embed.add_field(name="🔣 Anti-Zalgo", value=f"{s('anti_zalgo')}\nดักข้อความ Zalgo/Crash Text", inline=True)
+    embed.set_footer(text="💡 Auto-Backup Snapshot ทำงานอัตโนมัติทุก 6 ชั่วโมง")
+    return embed
+
 class SettingsMenuView(BaseSecurityView):
     def __init__(self, guild_id: int):
         super().__init__(timeout=300)
@@ -720,6 +785,10 @@ class MainDashboardView(BaseSecurityView):
     @discord.ui.button(label="💾 ระบบ Backup & Restore", style=discord.ButtonStyle.secondary, row=1)
     async def btn_backup(self, interaction: discord.Interaction, button: Button):
         await interaction.response.edit_message(embed=discord.Embed(title="💾 Backup & Restore", color=discord.Color.green()), view=BackupMenuView())
+
+    @discord.ui.button(label="🔰 ป้องกันขั้นสูง (2026)", style=discord.ButtonStyle.danger, row=2)
+    async def btn_advanced_security(self, interaction: discord.Interaction, button: Button):
+        await interaction.response.edit_message(embed=get_advanced_security_embed(interaction.guild.id), view=AdvancedSecurityView(interaction.guild.id))
 
 
 class DashboardCog(commands.Cog):
